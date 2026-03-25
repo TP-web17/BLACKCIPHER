@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#030807">
+    <title>𝑩𝒍𝒂𝒄𝒌𝑪𝒊𝒑𝒉𝒆𝒓 chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="app-shell">
+        <section class="auth-screen" id="authScreen">
+            <div class="auth-layout">
+                <article class="hero-panel">
+                    <div class="hero-mark" aria-hidden="true"></div>
+                    <p class="eyebrow">BlackCipher network</p>
+                    <h1>𝑩𝒍𝒂𝒄𝒌𝑪𝒊𝒑𝒉𝒆𝒓 chat</h1>
+                    <p class="hero-copy">
+                        Registro sincronizado com senha, sessao automatica por cookie e uma base pronta para
+                        canais, PVs, grupos, imagem, perfil com foto e digitacao em tempo real entre dispositivos.
+                    </p>
+
+                    <div class="hero-grid">
+                        <div class="hero-chip">Registro por usuario</div>
+                        <div class="hero-chip">Canais editaveis</div>
+                        <div class="hero-chip">DM e grupos</div>
+                        <div class="hero-chip">Imagem e perfil com foto</div>
+                    </div>
+                </article>
+
+                <article class="auth-card">
+                    <div class="auth-tabs" role="tablist" aria-label="Acesso">
+                        <button class="tab-button tab-button-active" id="loginTabButton" type="button" role="tab" aria-selected="true">
+                            Login
+                        </button>
+                        <button class="tab-button" id="registerTabButton" type="button" role="tab" aria-selected="false">
+                            Registro
+                        </button>
+                    </div>
+
+                    <div class="auth-status hidden" id="authStatus" aria-live="polite"></div>
+
+                    <form class="auth-form" id="loginForm">
+                        <label class="field-label" for="loginUsername">Usuario</label>
+                        <input
+                            id="loginUsername"
+                            type="text"
+                            placeholder="blackcipher_user"
+                            autocomplete="username"
+                            required
+                        >
+
+                        <label class="field-label" for="loginPassword">Senha</label>
+                        <input
+                            id="loginPassword"
+                            type="password"
+                            placeholder="Digite sua senha"
+                            autocomplete="current-password"
+                            required
+                        >
+
+                        <button class="primary-button full-width" type="submit">Entrar na conta</button>
+                    </form>
+
+                    <form class="auth-form hidden" id="registerForm">
+                        <label class="field-label" for="registerUsername">Novo usuario</label>
+                        <input
+                            id="registerUsername"
+                            type="text"
+                            placeholder="blackcipher_user"
+                            autocomplete="username"
+                            required
+                        >
+
+                        <label class="field-label" for="registerPassword">Nova senha</label>
+                        <input
+                            id="registerPassword"
+                            type="password"
+                            placeholder="Minimo de 6 caracteres"
+                            autocomplete="new-password"
+                            required
+                        >
+
+                        <label class="field-label" for="registerConfirmPassword">Confirmar senha</label>
+                        <input
+                            id="registerConfirmPassword"
+                            type="password"
+                            placeholder="Repita a senha"
+                            autocomplete="new-password"
+                            required
+                        >
+
+                        <button class="primary-button full-width" type="submit">Criar conta</button>
+                    </form>
+
+                    <div class="auth-footer">
+                        <p class="field-hint">As contas e conversas ficam sincronizadas pelo servidor.</p>
+                        <strong id="registeredCountLabel">0 contas sincronizadas</strong>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="app hidden" id="chatApp" aria-label="Aplicativo de chat">
+            <aside class="nav-panel">
+                <div class="workspace-card">
+                    <div class="workspace-glyph">BC</div>
+                    <div>
+                        <p class="eyebrow">BlackCipher relay</p>
+                        <h2>𝑩𝒍𝒂𝒄𝒌𝑪𝒊𝒑𝒉𝒆𝒓 chat</h2>
+                        <p class="muted-text">Canais, grupos e chats privados com controle aberto para todos os membros.</p>
+                    </div>
+                </div>
+
+                <div class="profile-card">
+                    <button class="profile-avatar-button" id="profileAvatarButton" type="button" aria-label="Editar perfil"></button>
+                    <div class="profile-copy">
+                        <strong id="profileName">Conta</strong>
+                        <p class="muted-text mono" id="profileHandle">@blackcipher</p>
+                        <p class="muted-text" id="profileStatus">Status aguardando edicao.</p>
+                    </div>
+                    <div class="profile-actions">
+                        <button class="secondary-button" id="editProfileButton" type="button">Editar perfil</button>
+                        <button class="secondary-button" id="switchAccountButton" type="button">Trocar conta</button>
+                        <button class="ghost-button" id="newAccountButton" type="button">Nova conta</button>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <button class="action-button" id="newChannelButton" type="button">+ Canal</button>
+                    <button class="action-button" id="newDmButton" type="button">+ PV</button>
+                    <button class="action-button" id="newGroupButton" type="button">+ Grupo</button>
+                </div>
+
+                <section class="conversation-section">
+                    <div class="section-head">
+                        <p class="section-title">Canais</p>
+                        <span class="section-badge" id="channelsCount">0</span>
+                    </div>
+                    <div class="conversation-list" id="channelsList"></div>
+                </section>
+
+                <section class="conversation-section">
+                    <div class="section-head">
+                        <p class="section-title">PVs</p>
+                        <span class="section-badge" id="directCount">0</span>
+                    </div>
+                    <div class="conversation-list" id="dmsList"></div>
+                </section>
+
+                <section class="conversation-section">
+                    <div class="section-head">
+                        <p class="section-title">Grupos</p>
+                        <span class="section-badge" id="groupsCount">0</span>
+                    </div>
+                    <div class="conversation-list" id="groupsList"></div>
+                </section>
+            </aside>
+
+            <section class="chat-panel">
+                <header class="chat-header">
+                    <div class="chat-header-main">
+                        <p class="eyebrow" id="conversationModeLabel">Canal</p>
+                        <h2 id="conversationTitle"># war-room</h2>
+                        <p class="chat-subtitle" id="conversationSubtitle">Selecione uma conversa para iniciar o fluxo.</p>
+                    </div>
+
+                    <div class="header-actions">
+                        <button class="secondary-button" id="editConversationButton" type="button">Editar</button>
+                        <button class="secondary-button" id="inviteMembersButton" type="button">Convidar</button>
+                        <label class="control-group" for="autoDeleteSelect">
+                            <span>Autoexcluir</span>
+                            <select id="autoDeleteSelect">
+                                <option value="0">Desativado</option>
+                                <option value="30000">30 segundos</option>
+                                <option value="300000">5 minutos</option>
+                                <option value="3600000">1 hora</option>
+                            </select>
+                        </label>
+                        <button class="ghost-button" id="clearChatButton" type="button">Limpar historico</button>
+                    </div>
+                </header>
+
+                <div class="chat-overview">
+                    <div>
+                        <p class="overview-label">Mensagens</p>
+                        <strong id="messageCounter">0 mensagens</strong>
+                    </div>
+                    <div>
+                        <p class="overview-label">Conta ativa</p>
+                        <strong id="activeUserLabel">@blackcipher</strong>
+                    </div>
+                    <div>
+                        <p class="overview-label">Usuarios sincronizados</p>
+                        <strong id="localUsersLabel">0 contas sincronizadas</strong>
+                    </div>
+                    <div>
+                        <p class="overview-label">Membros</p>
+                        <strong id="memberCountValue">0 membros</strong>
+                    </div>
+                    <div>
+                        <p class="overview-label">Digitando</p>
+                        <strong id="typingCountValue">0 sinais</strong>
+                    </div>
+                    <div>
+                        <p class="overview-label">Modo atual</p>
+                        <strong id="composerHint">Mensagens permanentes</strong>
+                    </div>
+                </div>
+
+                <div class="messages-wrap" id="messagesWrap">
+                    <div class="messages-list" id="messagesList" aria-live="polite"></div>
+                </div>
+
+                <div class="typing-indicator" id="typingIndicator" aria-live="polite"></div>
+
+                <form class="composer" id="messageForm">
+                    <label class="composer-label" for="messageInput">Mensagem</label>
+                    <textarea
+                        id="messageInput"
+                        rows="3"
+                        placeholder="Digite livremente. Sem limite visual de caracteres."
+                        autocomplete="off"
+                    ></textarea>
+
+                    <div class="attachment-preview hidden" id="attachmentPreview">
+                        <img id="attachmentPreviewImage" alt="Preview da imagem anexada">
+                        <div class="attachment-copy">
+                            <strong id="attachmentFileName">imagem.png</strong>
+                            <button class="ghost-button" id="removeAttachmentButton" type="button">Remover imagem</button>
+                        </div>
+                    </div>
+
+                    <div class="composer-footer">
+                        <div class="composer-actions">
+                            <label class="upload-button" for="imageInput">Enviar imagem</label>
+                            <input id="imageInput" type="file" accept="image/*" hidden>
+                            <span class="field-hint">Envie texto, imagem ou os dois juntos.</span>
+                        </div>
+                        <button class="primary-button" type="submit">Enviar</button>
+                    </div>
+                </form>
+            </section>
+
+            <aside class="info-panel">
+                <div class="info-card">
+                    <p class="eyebrow">Conversa</p>
+                    <h3 id="infoConversationTitle">Nenhuma conversa</h3>
+                    <p class="muted-text" id="infoConversationText">Escolha um canal, PV ou grupo para ver os detalhes desta sala.</p>
+                </div>
+
+                <div class="info-card">
+                    <div class="section-head">
+                        <p class="section-title">Membros</p>
+                        <span class="section-badge" id="memberCountBadge">0</span>
+                    </div>
+                    <div class="members-list" id="membersList"></div>
+                </div>
+
+                <div class="info-card">
+                    <div class="section-head">
+                        <p class="section-title">Log aberto</p>
+                        <span class="section-badge" id="auditCountBadge">0</span>
+                    </div>
+                    <p class="muted-text log-copy">
+                        Codigo cliente aberto, auditoria visivel e sincronizacao em tempo real ativa.
+                        Ultima atualizacao: <span class="mono" id="runtimeStamp">--:--</span>
+                    </p>
+                    <div class="audit-log-list" id="auditLogList"></div>
+                </div>
+
+                <div class="info-card">
+                    <p class="eyebrow">Intel</p>
+                    <ul class="intel-list">
+                        <li>Todos os usuarios podem criar e editar canais e grupos.</li>
+                        <li>Chats privados aparecem para os membros convidados.</li>
+                        <li>A digitacao sincroniza entre usuarios conectados no servidor.</li>
+                        <li>Imagens, perfis com foto e logs ficam persistidos para todas as contas.</li>
+                    </ul>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <div class="modal-overlay hidden" id="modalOverlay">
+        <section class="modal-card hidden" id="profileModal" aria-modal="true" role="dialog">
+            <div class="modal-header">
+                <div>
+                    <p class="eyebrow">Perfil</p>
+                    <h3>Editar identidade</h3>
+                </div>
+                <button class="close-button" type="button" data-close-modal aria-label="Fechar">×</button>
+            </div>
+
+            <form class="modal-form" id="profileForm">
+                <div class="avatar-editor">
+                    <div class="profile-modal-avatar" id="profileModalAvatar"></div>
+                    <div class="avatar-editor-actions">
+                        <label class="upload-button" for="profileAvatarInput">Trocar foto</label>
+                        <input id="profileAvatarInput" type="file" accept="image/*" hidden>
+                        <button class="ghost-button" id="removeProfilePhotoButton" type="button">Remover foto</button>
+                    </div>
+                </div>
+
+                <label class="field-label" for="profileDisplayNameInput">Nome visivel</label>
+                <input id="profileDisplayNameInput" type="text" placeholder="Seu nome no chat" required>
+
+                <label class="field-label" for="profileStatusInput">Status</label>
+                <input id="profileStatusInput" type="text" placeholder="Ex: monitorando operacoes">
+
+                <label class="field-label" for="profileBioInput">Bio</label>
+                <textarea id="profileBioInput" rows="4" placeholder="Resumo rapido sobre voce"></textarea>
+
+                <div class="modal-actions">
+                    <button class="primary-button" type="submit">Salvar perfil</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="modal-card hidden" id="conversationModal" aria-modal="true" role="dialog">
+            <div class="modal-header">
+                <div>
+                    <p class="eyebrow">Sala</p>
+                    <h3 id="conversationModalTitle">Criar canal</h3>
+                </div>
+                <button class="close-button" type="button" data-close-modal aria-label="Fechar">×</button>
+            </div>
+
+            <form class="modal-form" id="conversationForm">
+                <input id="conversationModeInput" type="hidden">
+                <input id="conversationTypeInput" type="hidden">
+
+                <p class="field-hint" id="conversationModalCopy">Defina o nome e a descricao desta conversa.</p>
+
+                <label class="field-label" for="conversationNameInput">Nome</label>
+                <input id="conversationNameInput" type="text" placeholder="Ex: shadow-grid" required>
+
+                <label class="field-label" for="conversationDescriptionInput">Descricao</label>
+                <textarea id="conversationDescriptionInput" rows="4" placeholder="Contexto rapido da conversa"></textarea>
+
+                <p class="field-hint" id="conversationFormHint">Todos os membros do site poderao ver e editar canais.</p>
+
+                <div class="modal-actions modal-actions-split">
+                    <button class="ghost-button hidden" id="deleteConversationButton" type="button">Excluir sala</button>
+                    <button class="primary-button" id="conversationSubmitButton" type="submit">Salvar</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="modal-card hidden" id="peopleModal" aria-modal="true" role="dialog">
+            <div class="modal-header">
+                <div>
+                    <p class="eyebrow">Membros</p>
+                    <h3 id="peopleModalTitle">Selecionar pessoas</h3>
+                </div>
+                <button class="close-button" type="button" data-close-modal aria-label="Fechar">×</button>
+            </div>
+
+            <form class="modal-form" id="peopleForm">
+                <input id="peopleModeInput" type="hidden">
+
+                <p class="field-hint" id="peopleModalCopy">Escolha as contas que vao participar desta conversa.</p>
+
+                <div class="people-fields hidden" id="peopleNameField">
+                    <label class="field-label" for="peopleNameInput">Nome do grupo</label>
+                    <input id="peopleNameInput" type="text" placeholder="Ex: squad-omega">
+                </div>
+
+                <div class="people-fields hidden" id="peopleDescriptionField">
+                    <label class="field-label" for="peopleDescriptionInput">Descricao</label>
+                    <textarea id="peopleDescriptionInput" rows="3" placeholder="Contexto do grupo"></textarea>
+                </div>
+
+                <div class="member-picker" id="peopleList"></div>
+
+                <p class="field-hint" id="peopleFormHint">Selecione pelo menos um membro.</p>
+
+                <div class="modal-actions">
+                    <button class="primary-button" id="peopleSubmitButton" type="submit">Confirmar</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
