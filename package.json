@@ -1,0 +1,13 @@
+{
+  "name": "blackcipher-chat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BlackCipher chat full-stack pronto para deploy no Railway",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
