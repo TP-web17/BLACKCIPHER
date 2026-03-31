@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>TP Carteira Premium</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=20260321b" />
+</head>
+<body>
+  <div class="ambient-bg" aria-hidden="true">
+    <span class="glow glow-a"></span>
+    <span class="glow glow-b"></span>
+    <span class="grid-noise"></span>
+  </div>
+
+  <div id="login-container" class="login-container">
+    <div class="login-panel login-panel-compact">
+      <section class="login-card login-card-single">
+        <div class="login-card-head login-card-head-single">
+          <span class="eyebrow">TP Hub Financeiro</span>
+          <button id="login-theme-toggle" class="theme-toggle" type="button" aria-label="Alternar tema">Modo escuro</button>
+        </div>
+        <div class="login-copy">
+          <h1>Entrar no painel</h1>
+          <p class="muted-text">Entre para acompanhar carteiras, pagamentos e historico financeiro em uma visao clara e refinada.</p>
+        </div>
+        <div class="login-form login-form-large">
+          <label for="username">Usuario</label>
+          <input type="text" id="username" placeholder="Digite seu usuario" autocomplete="username" />
+          <label for="password">Senha</label>
+          <input type="password" id="password" placeholder="Digite sua senha" autocomplete="current-password" />
+          <button id="login-button" class="btn-primary">Entrar</button>
+        </div>
+        <p class="login-note login-note-single">Login interno com sincronizacao segura em tempo real.</p>
+      </section>
+    </div>
+  </div>
+
+  <div id="app-container" class="app-container hidden">
+    <header class="app-header">
+      <div class="header-left">
+        <button id="menu-toggle" class="menu-toggle" aria-label="Abrir menu">Menu</button>
+        <img src="assets/logo.png" alt="Logo TP" class="logo" />
+        <div>
+          <h1 class="app-title">TP Hub Financeiro</h1>
+          <p id="current-page-title" class="page-subtitle">Carteiras</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="live-clock" class="live-clock"></span>
+        <span id="connection-status" class="connection-status" data-state="offline">Sincronizacao limitada</span>
+        <button id="theme-toggle-button" class="theme-toggle theme-toggle-app" type="button" aria-label="Alternar tema">Modo escuro</button>
+        <span id="current-user" class="current-user"></span>
+        <button id="logout-button" class="btn-danger">Sair</button>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <nav id="sidebar" class="sidebar"></nav>
+      <main id="content" class="content"></main>
+    </div>
+    <nav id="mobile-quick-nav" class="mobile-quick-nav" aria-label="Navegacao rapida"></nav>
+  </div>
+
+  <div id="chat-modal" class="modal hidden">
+    <div id="chat-overlay" class="modal-overlay"></div>
+    <div class="modal-content chat-window">
+      <div class="chat-header">
+        <h3 id="chat-title">Conversa</h3>
+        <button id="close-chat" class="close-modal-btn" aria-label="Fechar conversa">&times;</button>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="Digite sua mensagem..." />
+        <button id="send-message" class="btn-primary">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="wallet-detail-modal" class="modal hidden">
+    <div id="wallet-detail-overlay" class="modal-overlay wallet-detail-overlay"></div>
+    <div class="modal-content wallet-detail-modal-card" role="dialog" aria-modal="true" aria-labelledby="wallet-detail-title">
+      <div id="wallet-detail-body" class="wallet-detail-body"></div>
+    </div>
+  </div>
+
+  <script src="script.js?v=20260321b"></script>
+</body>
+</html>
