@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CONQUEST</title>
+    <link rel="icon" id="siteFavicon" type="image/jpeg" href="logo.jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="light">
+    <div class="page-noise" aria-hidden="true"></div>
+
+    <section class="auth-screen" id="authScreen">
+        <div class="auth-stage">
+            <div class="auth-marquee" aria-hidden="true">
+                <div class="auth-track auth-track-a" id="authTrackA"></div>
+                <div class="auth-track auth-track-b" id="authTrackB"></div>
+            </div>
+            <div class="auth-stage-overlay"></div>
+            <div class="auth-copy">
+                <span class="brand-kicker brand-kicker--logo">
+                    <span class="brand-kicker-logo" aria-hidden="true">
+                        <img class="brand-logo" data-site-logo="kicker" src="logo.jpeg" alt="">
+                    </span>
+                    CONQUEST
+                </span>
+                <h1>Entre e volte para o que importa.</h1>
+                <p>
+                    O fundo ganha movimento com os posts mais recentes da rede.
+                    Um acesso simples para abrir seu perfil, seu feed e suas conversas.
+                </p>
+            </div>
+        </div>
+
+        <section class="auth-panel">
+            <div class="auth-panel-head">
+                <span class="eyebrow">Acesso</span>
+                <h2>Entrar no CONQUEST</h2>
+                <p>Entre com sua conta ou crie um perfil novo para publicar, seguir pessoas, conversar e montar o seu inicio.</p>
+            </div>
+
+            <div class="auth-switch">
+                <button class="auth-switch-button is-active" type="button" data-auth-view="login">Entrar</button>
+                <button class="auth-switch-button" type="button" data-auth-view="register">Criar conta</button>
+            </div>
+
+            <div class="saved-accounts" id="savedAccounts"></div>
+
+            <form class="auth-form" id="loginForm">
+                <label class="field">
+                    <span>@ usuario</span>
+                    <input name="handle" type="text" placeholder="seuusuario" maxlength="24" required>
+                </label>
+                <label class="field">
+                    <span>Senha</span>
+                    <input name="password" type="password" placeholder="Sua senha" minlength="8" maxlength="120" required>
+                </label>
+                <button class="primary-button auth-submit" type="submit">Entrar</button>
+            </form>
+
+            <form class="auth-form is-hidden" id="registerForm">
+                <label class="field">
+                    <span>Nome</span>
+                    <input name="name" type="text" placeholder="Seu nome" maxlength="36" required>
+                </label>
+                <label class="field">
+                    <span>@ usuario</span>
+                    <input name="handle" type="text" placeholder="seuusuario" maxlength="24" required>
+                </label>
+                <label class="field">
+                    <span>Bio curta</span>
+                    <input name="bio" type="text" placeholder="O que voce costuma postar" maxlength="90">
+                </label>
+                <label class="field">
+                    <span>Senha</span>
+                    <input name="password" type="password" placeholder="Crie uma senha" minlength="8" maxlength="120" required>
+                </label>
+                <button class="primary-button auth-submit" type="submit">Criar conta</button>
+            </form>
+        </section>
+    </section>
+
+    <div class="app-shell is-hidden" id="appShell">
+        <aside class="sidebar">
+            <button class="brand-lockup" type="button" data-view="home">
+                <span class="brand-mark" aria-hidden="true">
+                    <img class="brand-logo" data-site-logo="brand" src="logo.jpeg" alt="">
+                </span>
+                <span class="brand-text">CONQUEST</span>
+            </button>
+
+            <nav class="sidebar-nav">
+                <button class="nav-link is-active" type="button" data-view="home">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M4.5 10.5 12 4.5l7.5 6V19a1.5 1.5 0 0 1-1.5 1.5H14V14h-4v6.5H6A1.5 1.5 0 0 1 4.5 19Z"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Hoje</span>
+                </button>
+                <button class="nav-link" type="button" data-view="discussions">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M5 7.8A3.8 3.8 0 0 1 8.8 4h6.4A3.8 3.8 0 0 1 19 7.8v4.4A3.8 3.8 0 0 1 15.2 16H10l-4.5 3V7.8Z"></path>
+                            <path d="M8.5 8.5h7"></path>
+                            <path d="M8.5 11.5H13"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Discussoes</span>
+                </button>
+                <button class="nav-link" type="button" data-view="messages">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M5 7.8A3.8 3.8 0 0 1 8.8 4h6.4A3.8 3.8 0 0 1 19 7.8v4.4A3.8 3.8 0 0 1 15.2 16H10l-4.5 3V7.8Z"></path>
+                            <path d="M8.5 8.5h7"></path>
+                            <path d="M8.5 11.5H13"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Direct</span>
+                </button>
+                <button class="nav-link" type="button" data-view="following">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="m12 4.5 1.8 4.4 4.4 1.8-4.4 1.8-1.8 4.4-1.8-4.4-4.4-1.8 4.4-1.8Z"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Feed</span>
+                </button>
+                <button class="nav-link" type="button" data-view="saved">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M7.5 4.5h9A1.5 1.5 0 0 1 18 6v13.5L12 16.2 6 19.5V6a1.5 1.5 0 0 1 1.5-1.5Z"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Colecoes</span>
+                </button>
+                <button class="nav-link" type="button" data-view="activity">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 4.75a4.75 4.75 0 0 1 4.75 4.75v2.36c0 .82.24 1.62.7 2.29l.93 1.35H5.62l.93-1.35c.46-.67.7-1.47.7-2.29V9.5A4.75 4.75 0 0 1 12 4.75Z"></path>
+                            <path d="M10.25 18.25a1.75 1.75 0 0 0 3.5 0"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Alertas</span>
+                </button>
+                <button class="nav-link" type="button" data-view="profile">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 11a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6Z"></path>
+                            <path d="M4.5 19.5a7.5 7.5 0 0 1 15 0"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Perfil</span>
+                </button>
+            </nav>
+
+            <button class="primary-button sidebar-post-button" type="button" data-action="open-composer">
+                <span class="button-symbol" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 5v14"></path>
+                        <path d="M5 12h14"></path>
+                    </svg>
+                </span>
+                <span class="button-text">Novo post</span>
+            </button>
+            <div class="sidebar-user" id="sidebarUser"></div>
+        </aside>
+
+        <div class="app-main">
+            <header class="topbar" id="appTopbar">
+                <div class="topbar-search-row">
+                    <label class="searchbar" for="globalSearch">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M10.5 4a6.5 6.5 0 1 0 4.03 11.6l4.44 4.44 1.41-1.41-4.44-4.44A6.5 6.5 0 0 0 10.5 4m0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9"></path>
+                        </svg>
+                        <input id="globalSearch" type="search" placeholder="Buscar arte">
+                    </label>
+                </div>
+
+                <div class="topbar-main-row">
+                    <button class="topbar-brand" type="button" data-view="home" aria-label="Abrir Hoje">
+                        <span class="brand-mark">
+                            <img class="brand-logo" data-site-logo="brand" src="logo.jpeg" alt="">
+                        </span>
+                        <span class="topbar-brand-copy">CONQUEST</span>
+                    </button>
+
+                    <div class="topbar-actions">
+                        <div class="topbar-actions-bubble">
+                            <div class="topbar-alerts-shell" id="topbarAlertsShell">
+                                <button class="ghost-button icon-button topbar-icon-button" type="button" data-action="toggle-alerts-preview" id="topbarAlertsButton" aria-label="Abrir alertas">
+                                    <span class="button-symbol" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24">
+                                            <path d="M12 4.75a4.75 4.75 0 0 1 4.75 4.75v2.36c0 .82.24 1.62.7 2.29l.93 1.35H5.62l.93-1.35c.46-.67.7-1.47.7-2.29V9.5A4.75 4.75 0 0 1 12 4.75Z"></path>
+                                            <path d="M10.25 18.25a1.75 1.75 0 0 0 3.5 0"></path>
+                                        </svg>
+                                    </span>
+                                    <span class="topbar-badge is-hidden" id="topbarAlertsBadge"></span>
+                                </button>
+                                <div class="topbar-alerts-preview" id="topbarAlertsPreview"></div>
+                            </div>
+                        </div>
+                        <button class="ghost-button icon-button topbar-icon-button" type="button" data-action="open-messages" aria-label="Abrir direct">
+                            <span class="button-symbol" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M5 7.8A3.8 3.8 0 0 1 8.8 4h6.4A3.8 3.8 0 0 1 19 7.8v4.4A3.8 3.8 0 0 1 15.2 16H10l-4.5 3V7.8Z"></path>
+                                    <path d="M8.5 8.5h7"></path>
+                                    <path d="M8.5 11.5H13"></path>
+                                </svg>
+                            </span>
+                        </button>
+                        <button class="ghost-button icon-button topbar-icon-button" id="themeToggle" type="button" aria-label="Abrir personalizacao de cor">
+                            <span class="button-symbol" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 4.5a7.5 7.5 0 0 0 0 15h1.6a1.9 1.9 0 0 0 0-3.8h-.6a2.6 2.6 0 0 1 0-5.2h1.5a4.5 4.5 0 1 0 0-9Z"></path>
+                                    <circle cx="8.1" cy="9.2" r="1"></circle>
+                                    <circle cx="11" cy="7.2" r="1"></circle>
+                                    <circle cx="15" cy="7.9" r="1"></circle>
+                                </svg>
+                            </span>
+                            <span class="button-text">Cor</span>
+                        </button>
+                        <button class="primary-button compact-button topbar-compose-button" type="button" data-action="open-composer" aria-label="Criar post">
+                            <span class="button-symbol" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 5v14"></path>
+                                    <path d="M5 12h14"></path>
+                                </svg>
+                            </span>
+                            <span class="button-text">Postar</span>
+                        </button>
+                        <div class="user-pill" id="topUserPill"></div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="view-root" id="viewRoot"></main>
+
+            <nav class="mobile-nav">
+                <button class="mobile-link is-active" type="button" data-view="home">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M4.5 10.5 12 4.5l7.5 6V19a1.5 1.5 0 0 1-1.5 1.5H14V14h-4v6.5H6A1.5 1.5 0 0 1 4.5 19Z"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Hoje</span>
+                </button>
+                <button class="mobile-link" type="button" data-view="discussions">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M5 7.8A3.8 3.8 0 0 1 8.8 4h6.4A3.8 3.8 0 0 1 19 7.8v4.4A3.8 3.8 0 0 1 15.2 16H10l-4.5 3V7.8Z"></path>
+                            <path d="M8.5 8.5h7"></path>
+                            <path d="M8.5 11.5H13"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Papo</span>
+                </button>
+                <button class="mobile-link" type="button" data-view="following">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="m12 4.5 1.8 4.4 4.4 1.8-4.4 1.8-1.8 4.4-1.8-4.4-4.4-1.8 4.4-1.8Z"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Feed</span>
+                </button>
+                <button class="mobile-link mobile-link--primary" type="button" data-action="open-composer">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 5v14"></path>
+                            <path d="M5 12h14"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Postar</span>
+                </button>
+                <button class="mobile-link" type="button" data-view="saved">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M7.5 4.5h9A1.5 1.5 0 0 1 18 6v13.5L12 16.2 6 19.5V6a1.5 1.5 0 0 1 1.5-1.5Z"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Colecoes</span>
+                </button>
+                <button class="mobile-link" type="button" data-view="profile">
+                    <span class="nav-symbol" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 11a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6Z"></path>
+                            <path d="M4.5 19.5a7.5 7.5 0 0 1 15 0"></path>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Perfil</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <div class="modal" id="postModal">
+        <div class="modal-backdrop" data-action="close-post-modal"></div>
+        <div class="modal-shell" id="postModalContent"></div>
+    </div>
+
+    <div class="modal" id="composerModal">
+        <div class="modal-backdrop" data-action="close-composer"></div>
+        <div class="modal-shell" id="composerModalContent"></div>
+    </div>
+
+    <div class="modal" id="profileModal">
+        <div class="modal-backdrop" data-action="close-profile-editor"></div>
+        <div class="modal-shell" id="profileModalContent"></div>
+    </div>
+
+    <div class="toast-stack" id="toastStack"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
