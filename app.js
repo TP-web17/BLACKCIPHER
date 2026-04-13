@@ -81,6 +81,8 @@ const registerForm = document.getElementById("registerForm");
 const appTopbar = document.getElementById("appTopbar");
 const themeToggle = document.getElementById("themeToggle");
 const siteFavicon = document.getElementById("siteFavicon");
+const topMessagesButton = document.getElementById("topMessagesButton");
+const topComposeButton = document.getElementById("topComposeButton");
 const globalSearch = document.getElementById("globalSearch");
 const searchbarShell = document.getElementById("searchbarShell");
 const searchSuggestions = document.getElementById("searchSuggestions");
@@ -100,6 +102,10 @@ const toastStack = document.getElementById("toastStack");
 const loadingOverlay = document.getElementById("loadingOverlay");
 const loadingOverlayTitle = document.getElementById("loadingOverlayTitle");
 const loadingOverlayText = document.getElementById("loadingOverlayText");
+const mobileHomeButton = document.getElementById("mobileHomeButton");
+const mobileFeedButton = document.getElementById("mobileFeedButton");
+const mobileMessagesButton = document.getElementById("mobileMessagesButton");
+const mobileProfileButton = document.getElementById("mobileProfileButton");
 const logoAssets = {
     light: LOGO_SOURCE,
     dark: LOGO_SOURCE,
@@ -823,6 +829,46 @@ async function bootstrapSession() {
     }
 }
 
+function activateView(view) {
+    state.ui.view = view || "home";
+    state.ui.inlineCommentPostId = null;
+    state.ui.replyingToCommentId = null;
+    state.ui.profileConnectionsView = "";
+    state.ui.profileMenuOpen = false;
+    state.ui.alertsPreviewOpen = false;
+
+    if (state.ui.view === "profile") {
+        state.ui.profileUserId = getCurrentUser()?.id || null;
+    }
+
+    if (state.ui.view === "messages") {
+        const threadId = state.ui.directThreadId || getDirectThreadsForUser(getCurrentUser()?.id || "")[0]?.id || null;
+        state.ui.directThreadId = threadId;
+    }
+
+    renderFrame();
+}
+
+function openComposerFlow(postKind = null) {
+    const draftKind = postKind || (state.ui.view === "discussions" ? "discussion" : "art");
+    state.ui.composerDraft = createEmptyDraft(draftKind);
+    state.ui.uploadingImage = false;
+    state.ui.uploadingSticker = false;
+    state.ui.composerOpen = true;
+    state.ui.profileMenuOpen = false;
+    state.ui.alertsPreviewOpen = false;
+    renderComposerModal();
+}
+
+function openMessagesFlow() {
+    const user = requireCurrentUser();
+    state.ui.view = "messages";
+    state.ui.directThreadId = state.ui.directThreadId || getDirectThreadsForUser(user.id)[0]?.id || null;
+    state.ui.profileMenuOpen = false;
+    state.ui.alertsPreviewOpen = false;
+    renderFrame();
+}
+
 function bindEvents() {
     if (window.matchMedia("(pointer: fine)").matches) {
         document.addEventListener("pointermove", handlePointerGlow, { passive: true });
@@ -848,6 +894,52 @@ function bindEvents() {
     if (refreshButton) {
         refreshButton.addEventListener("click", handleRefreshButtonClick);
     }
+
+    [
+        [mobileHomeButton, () => activateView("home")],
+        [mobileFeedButton, () => activateView("following")],
+        [mobileMessagesButton, () => openMessagesFlow()],
+        [mobileProfileButton, () => activateView("profile")],
+        [topMessagesButton, () => openMessagesFlow()],
+        [topComposeButton, () => openComposerFlow()],
+    ].forEach(([element, handler]) => {
+        if (!element) {
+            return;
+        }
+
+        let pointerHandledAt = 0;
+
+        const invokeHandler = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            try {
+                handler();
+            } catch (error) {
+                showToast(error.message || "Nao foi possivel concluir essa acao.");
+            }
+        };
+
+        element.addEventListener(
+            "pointerup",
+            (event) => {
+                if (event.pointerType !== "touch" && event.pointerType !== "pen") {
+                    return;
+                }
+
+                pointerHandledAt = Date.now();
+                invokeHandler(event);
+            },
+            { passive: false }
+        );
+
+        element.addEventListener("click", (event) => {
+            if (Date.now() - pointerHandledAt < 700) {
+                return;
+            }
+
+            invokeHandler(event);
+        });
+    });
 
     globalSearch.addEventListener("input", (event) => {
         state.ui.query = event.target.value.trim();
@@ -1065,23 +1157,7 @@ function bindEvents() {
         }
 
         if (viewButton) {
-            state.ui.view = viewButton.dataset.view || "home";
-            state.ui.inlineCommentPostId = null;
-            state.ui.replyingToCommentId = null;
-            state.ui.profileConnectionsView = "";
-            state.ui.profileMenuOpen = false;
-            state.ui.alertsPreviewOpen = false;
-
-            if (state.ui.view === "profile") {
-                state.ui.profileUserId = getCurrentUser()?.id || null;
-            }
-
-            if (state.ui.view === "messages") {
-                const threadId = state.ui.directThreadId || getDirectThreadsForUser(getCurrentUser()?.id || "")[0]?.id || null;
-                state.ui.directThreadId = threadId;
-            }
-
-            renderFrame();
+            activateView(viewButton.dataset.view || "home");
             return;
         }
 
@@ -1133,24 +1209,12 @@ function bindEvents() {
             }
 
             if (action === "open-composer") {
-                state.ui.composerDraft = createEmptyDraft(state.ui.view === "discussions" ? "discussion" : "art");
-                state.ui.uploadingImage = false;
-                state.ui.uploadingSticker = false;
-                state.ui.composerOpen = true;
-                state.ui.profileMenuOpen = false;
-                state.ui.alertsPreviewOpen = false;
-                renderComposerModal();
+                openComposerFlow();
                 return;
             }
 
             if (action === "open-discussion-composer") {
-                state.ui.composerDraft = createEmptyDraft("discussion");
-                state.ui.uploadingImage = false;
-                state.ui.uploadingSticker = false;
-                state.ui.composerOpen = true;
-                state.ui.profileMenuOpen = false;
-                state.ui.alertsPreviewOpen = false;
-                renderComposerModal();
+                openComposerFlow("discussion");
                 return;
             }
 
@@ -1287,12 +1351,7 @@ function bindEvents() {
             }
 
             if (action === "open-messages") {
-                const user = requireCurrentUser();
-                state.ui.view = "messages";
-                state.ui.directThreadId = state.ui.directThreadId || getDirectThreadsForUser(user.id)[0]?.id || null;
-                state.ui.profileMenuOpen = false;
-                state.ui.alertsPreviewOpen = false;
-                renderFrame();
+                openMessagesFlow();
                 return;
             }
 

@@ -12241,7 +12241,6 @@ button,
     }
 
     .topbar-icon-button,
-    .topbar-compose-button,
     .topbar-actions > .user-pill .top-profile-bubble {
         min-width: 44px;
         width: 44px;
@@ -12249,6 +12248,16 @@ button,
         height: 44px;
         padding: 0;
         border-radius: 14px;
+    }
+
+    .topbar-compose-button {
+        min-width: 94px;
+        width: auto;
+        min-height: 44px;
+        height: 44px;
+        padding: 0 14px;
+        border-radius: 14px;
+        gap: 8px;
     }
 
     .topbar-icon-button .button-symbol,
@@ -12259,9 +12268,15 @@ button,
         background: transparent;
     }
 
-    .topbar-icon-button .button-text,
-    .topbar-compose-button .button-text {
+    .topbar-icon-button .button-text {
         display: none;
+    }
+
+    .topbar-compose-button .button-text {
+        display: inline;
+        font-size: 0.8rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
     }
 
     .topbar-search-row .searchbar {
@@ -12281,6 +12296,7 @@ button,
         left: max(8px, env(safe-area-inset-left));
         right: max(8px, env(safe-area-inset-right));
         bottom: max(8px, env(safe-area-inset-bottom));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         padding: 8px;
         gap: 6px;
         border-radius: 20px;
@@ -12335,22 +12351,8 @@ button,
         border: 0;
     }
 
-    .mobile-link--compose {
-        background: rgba(var(--site-accent-rgb), 0.14) !important;
-        border-color: rgba(var(--site-accent-rgb), 0.32) !important;
-        box-shadow: none !important;
-        color: #fff !important;
-    }
-
-    .mobile-link--compose .nav-symbol {
-        width: 20px;
-        height: 20px;
-        border-radius: 0;
-        background: transparent !important;
-    }
-
-    .mobile-link--compose .nav-label {
-        color: inherit !important;
+    .mobile-link .nav-label {
+        color: rgba(255, 255, 255, 0.88);
     }
 }
 
