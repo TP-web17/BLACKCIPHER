@@ -31,6 +31,9 @@ const DEFAULT_POST_TITLE_COLOR = "#f8fbff";
 const DEFAULT_POST_CAPTION_COLOR = "#d7deea";
 const DEFAULT_MEDIA_FOCUS = 50;
 const DEFAULT_MEDIA_SCALE = 1;
+const MOBILE_PULL_REFRESH_THRESHOLD = 84;
+const MOBILE_PULL_REFRESH_MAX = 116;
+const MOBILE_PULL_REFRESH_HOLD_OFFSET = 68;
 const LOGO_SOURCE = "logo.jpeg";
 const formatCompact = new Intl.NumberFormat("pt-BR", {
     notation: "compact",
@@ -78,6 +81,7 @@ const authTrackB = document.getElementById("authTrackB");
 const savedAccounts = document.getElementById("savedAccounts");
 const loginForm = document.getElementById("loginForm");
 const registerForm = document.getElementById("registerForm");
+const appMain = document.querySelector(".app-main");
 const appTopbar = document.getElementById("appTopbar");
 const themeToggle = document.getElementById("themeToggle");
 const siteFavicon = document.getElementById("siteFavicon");
@@ -98,6 +102,8 @@ const composerModal = document.getElementById("composerModal");
 const composerModalContent = document.getElementById("composerModalContent");
 const profileModal = document.getElementById("profileModal");
 const profileModalContent = document.getElementById("profileModalContent");
+const pullRefreshShell = document.getElementById("pullRefreshShell");
+const pullRefreshText = document.getElementById("pullRefreshText");
 const toastStack = document.getElementById("toastStack");
 const loadingOverlay = document.getElementById("loadingOverlay");
 const loadingOverlayTitle = document.getElementById("loadingOverlayTitle");
@@ -118,6 +124,7 @@ let recoverySyncPromise = null;
 let touchActivationState = null;
 let lastSyntheticTouchTarget = null;
 let lastSyntheticTouchAt = 0;
+let pullRefreshGesture = null;
 
 const state = {
     db: loadDb(),
@@ -158,6 +165,10 @@ const state = {
         authPendingMode: "",
         publishingPost: false,
         sendingDirect: false,
+        syncingSession: false,
+        pullRefreshOffset: 0,
+        pullRefreshReady: false,
+        pullRefreshRefreshing: false,
         busyOverlay: createBusyOverlayState(
             true,
             "Entrando na conta",
@@ -869,12 +880,227 @@ function openMessagesFlow() {
     renderFrame();
 }
 
+function isMobilePullRefreshEnabled() {
+    return window.innerWidth <= 760 || window.matchMedia("(pointer: coarse)").matches;
+}
+
+function isPullRefreshBlockedTarget(target) {
+    return Boolean(
+        target?.closest(
+            "input, textarea, select, option, label, form, button, a, [role='button'], .search-suggestions-panel, .modal"
+        )
+    );
+}
+
+function canStartPullRefresh(target) {
+    return (
+        Boolean(getCurrentUser()) &&
+        isMobilePullRefreshEnabled() &&
+        window.scrollY <= 0 &&
+        !state.ui.bootstrappingSession &&
+        !state.ui.authPendingMode &&
+        !state.ui.syncingSession &&
+        !document.body.classList.contains("modal-open") &&
+        !state.ui.profileMenuOpen &&
+        !state.ui.alertsPreviewOpen &&
+        !isPullRefreshBlockedTarget(target)
+    );
+}
+
+function getPullRefreshOffset(deltaY) {
+    if (deltaY <= 0) {
+        return 0;
+    }
+
+    const eased = deltaY < 140 ? deltaY * 0.52 : 72 + (deltaY - 140) * 0.18;
+    return Math.max(0, Math.min(MOBILE_PULL_REFRESH_MAX, eased));
+}
+
+function syncPullRefreshUi() {
+    if (!appShell || !appMain || !pullRefreshShell || !pullRefreshText) {
+        return;
+    }
+
+    const isAvailable = Boolean(getCurrentUser()) && isMobilePullRefreshEnabled();
+    const offset = isAvailable ? Math.max(0, Math.round(state.ui.pullRefreshOffset || 0)) : 0;
+    const progress = Math.min(offset / MOBILE_PULL_REFRESH_THRESHOLD, 1);
+    const isVisible = isAvailable && (offset > 0 || state.ui.pullRefreshRefreshing);
+    const isActive = isVisible && offset > 0 && !state.ui.pullRefreshRefreshing;
+
+    appMain.style.setProperty("--pull-refresh-offset", `${offset}px`);
+    appMain.style.setProperty("--pull-refresh-progress", progress.toFixed(3));
+    appShell.classList.toggle("is-pull-refresh-visible", isVisible);
+    appShell.classList.toggle("is-pull-refresh-active", isActive);
+    appShell.classList.toggle("is-pull-refresh-ready", isVisible && state.ui.pullRefreshReady);
+    appShell.classList.toggle("is-pull-refresh-refreshing", Boolean(state.ui.pullRefreshRefreshing));
+
+    pullRefreshShell.classList.toggle("is-visible", isVisible);
+    pullRefreshShell.classList.toggle("is-ready", isVisible && state.ui.pullRefreshReady);
+    pullRefreshShell.classList.toggle("is-refreshing", Boolean(state.ui.pullRefreshRefreshing));
+    pullRefreshShell.setAttribute("aria-hidden", isVisible ? "false" : "true");
+    pullRefreshText.textContent = state.ui.pullRefreshRefreshing
+        ? "Atualizando agora"
+        : state.ui.pullRefreshReady
+          ? "Solte para atualizar"
+          : "Puxe para atualizar";
+}
+
+function resetPullRefreshUi() {
+    state.ui.pullRefreshOffset = 0;
+    state.ui.pullRefreshReady = false;
+    state.ui.pullRefreshRefreshing = false;
+    syncPullRefreshUi();
+}
+
+function clearPullRefreshGesture() {
+    pullRefreshGesture = null;
+
+    if (!state.ui.pullRefreshRefreshing) {
+        resetPullRefreshUi();
+    }
+}
+
+async function refreshSessionData(options = {}) {
+    const {
+        preserveScroll = true,
+        showOverlay = true,
+        successMessage = "Rede atualizada.",
+        errorMessage = "Nao foi possivel atualizar a rede.",
+        silentSuccess = false
+    } = options;
+
+    if (state.ui.syncingSession) {
+        return false;
+    }
+
+    const currentScroll = preserveScroll ? window.scrollY : 0;
+    state.ui.syncingSession = true;
+
+    if (showOverlay) {
+        setBusyOverlay("Sincronizando a rede", "Atualizando feed, direct e alertas sem recarregar a pagina.");
+    } else {
+        syncPullRefreshUi();
+    }
+
+    try {
+        await apiRequest("/api/session");
+        renderAll();
+
+        if (preserveScroll) {
+            window.requestAnimationFrame(() => {
+                window.scrollTo({ top: currentScroll, behavior: "auto" });
+            });
+        }
+
+        if (!silentSuccess) {
+            showToast(successMessage);
+        }
+
+        return true;
+    } catch (error) {
+        showToast(error.message || errorMessage);
+        return false;
+    } finally {
+        state.ui.syncingSession = false;
+
+        if (showOverlay) {
+            clearBusyOverlay();
+        }
+
+        if (!state.ui.pullRefreshRefreshing) {
+            syncPullRefreshUi();
+        }
+    }
+}
+
+function handlePullRefreshTouchStart(event) {
+    if (event.touches.length !== 1 || !canStartPullRefresh(event.target)) {
+        pullRefreshGesture = null;
+        return;
+    }
+
+    const touch = event.touches[0];
+    pullRefreshGesture = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        engaged: false
+    };
+}
+
+function handlePullRefreshTouchMove(event) {
+    if (!pullRefreshGesture || event.touches.length !== 1 || state.ui.pullRefreshRefreshing || state.ui.syncingSession) {
+        return;
+    }
+
+    const touch = event.touches[0];
+    const deltaY = touch.clientY - pullRefreshGesture.startY;
+    const deltaX = Math.abs(touch.clientX - pullRefreshGesture.startX);
+
+    if (deltaY <= 0 || window.scrollY > 0) {
+        clearPullRefreshGesture();
+        return;
+    }
+
+    if (!pullRefreshGesture.engaged) {
+        if (deltaY < 10) {
+            return;
+        }
+
+        if (deltaX > 22) {
+            clearPullRefreshGesture();
+            return;
+        }
+
+        pullRefreshGesture.engaged = true;
+    }
+
+    touchActivationState = null;
+    state.ui.pullRefreshOffset = getPullRefreshOffset(deltaY);
+    state.ui.pullRefreshReady = state.ui.pullRefreshOffset >= MOBILE_PULL_REFRESH_THRESHOLD;
+    syncPullRefreshUi();
+    event.preventDefault();
+}
+
+async function handlePullRefreshTouchEnd() {
+    const shouldRefresh = Boolean(pullRefreshGesture?.engaged && state.ui.pullRefreshReady);
+    pullRefreshGesture = null;
+
+    if (!state.ui.pullRefreshOffset && !state.ui.pullRefreshRefreshing) {
+        return;
+    }
+
+    if (!shouldRefresh) {
+        resetPullRefreshUi();
+        return;
+    }
+
+    state.ui.pullRefreshReady = false;
+    state.ui.pullRefreshRefreshing = true;
+    state.ui.pullRefreshOffset = MOBILE_PULL_REFRESH_HOLD_OFFSET;
+    syncPullRefreshUi();
+
+    await refreshSessionData({
+        preserveScroll: true,
+        showOverlay: false,
+        successMessage: "Feed atualizado.",
+        errorMessage: "Nao foi possivel atualizar o feed."
+    });
+
+    resetPullRefreshUi();
+}
+
 function bindEvents() {
     if (window.matchMedia("(pointer: fine)").matches) {
         document.addEventListener("pointermove", handlePointerGlow, { passive: true });
     }
 
     window.addEventListener("scroll", syncTopbarState, { passive: true });
+    document.addEventListener("touchstart", handlePullRefreshTouchStart, { passive: true });
+    document.addEventListener("touchmove", handlePullRefreshTouchMove, { passive: false });
+    document.addEventListener("touchend", () => {
+        void handlePullRefreshTouchEnd();
+    });
+    document.addEventListener("touchcancel", clearPullRefreshGesture, { passive: true });
 
     if (themeToggle) {
         themeToggle.addEventListener("click", () => {
@@ -2198,30 +2424,24 @@ function bindEvents() {
 async function handleRefreshButtonClick(event) {
     const refreshButton = event.currentTarget;
 
-    if (refreshButton.disabled) {
+    if (refreshButton.disabled || state.ui.syncingSession) {
         return;
     }
 
-    const currentScroll = window.scrollY;
     refreshButton.disabled = true;
     refreshButton.style.animation = "none";
     setTimeout(() => {
         refreshButton.style.animation = "spin 0.6s ease-in-out";
     }, 10);
 
-    setBusyOverlay("Sincronizando a rede", "Atualizando feed, direct e alertas sem recarregar a pagina.");
-
     try {
-        await apiRequest("/api/session");
-        renderAll();
-        window.requestAnimationFrame(() => {
-            window.scrollTo({ top: currentScroll, behavior: "auto" });
+        await refreshSessionData({
+            preserveScroll: true,
+            showOverlay: true,
+            successMessage: "Rede atualizada.",
+            errorMessage: "Nao foi possivel atualizar a rede."
         });
-        showToast("Rede atualizada.");
-    } catch (error) {
-        showToast(error.message || "Nao foi possivel atualizar a rede.");
     } finally {
-        clearBusyOverlay();
         refreshButton.disabled = false;
         refreshButton.style.animation = "";
     }
@@ -2421,6 +2641,7 @@ function renderAll() {
     renderPostModal();
     renderProfileEditorModal();
     renderLoadingOverlay();
+    syncPullRefreshUi();
     refreshBrandAssets();
 }
 
@@ -2446,6 +2667,7 @@ function renderFrame() {
         viewRoot.innerHTML = "";
         searchSuggestions.innerHTML = "";
         searchbarShell?.classList.remove("is-open");
+        resetPullRefreshUi();
         return;
     }
 
@@ -2463,6 +2685,7 @@ function renderFrame() {
         syncTopbarState();
         syncNavigation();
         document.body.classList.toggle("modal-open", false);
+        resetPullRefreshUi();
         return;
     }
 
