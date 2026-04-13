@@ -1,5 +1,6 @@
 node_modules
 npm-debug.log*
-data/
+data/*
+!data/.gitkeep
 .env
 temp_*.txt

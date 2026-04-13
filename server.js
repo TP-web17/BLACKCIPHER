@@ -49,7 +49,6 @@ let db = loadDatabase();
 let scheduledSaveTimer = null;
 
 ensureSeedAdmin(db);
-purgeLaunchTestData(db);
 cleanupDatabase(db);
 saveDatabase(db);
 
@@ -103,6 +102,13 @@ function createDb() {
         directThreads: [],
         sessions: [],
         recentAccountIds: []
+    };
+}
+
+function getStorageMeta() {
+    return {
+        storageMode: isProductionRuntime && isUsingProjectDataDir ? "volatile" : "persistent",
+        recoveryFallbackEnabled: true
     };
 }
 
@@ -467,65 +473,6 @@ function ensureSeedAdmin(nextDb) {
     });
 }
 
-function purgeLaunchTestData(nextDb) {
-    const blockedUserIds = new Set(
-        (Array.isArray(nextDb.users) ? nextDb.users : [])
-            .filter((user) => isGeneratedTestUser(user))
-            .map((user) => user.id)
-    );
-
-    if (!blockedUserIds.size) {
-        return;
-    }
-
-    nextDb.users = (nextDb.users || []).filter((user) => !blockedUserIds.has(user.id));
-    nextDb.posts = (nextDb.posts || []).filter((post) => {
-        return !blockedUserIds.has(post.authorId) && !isGeneratedTestPost(post);
-    });
-}
-
-function isGeneratedTestUser(user) {
-    if (!user || typeof user !== "object") {
-        return false;
-    }
-
-    if (sanitizeText(user.ownerKey || "", 120) === "seed-admin") {
-        return false;
-    }
-
-    const name = String(user.name || "").toLowerCase();
-    const handle = normalizeHandle(user.handle || "");
-    const bio = String(user.bio || "").toLowerCase();
-    const status = String(user.statusNote || "").toLowerCase();
-    const combined = `${name} ${handle} ${bio} ${status}`;
-
-    if (/teste velocidade|conta de teste|qa final|talker|veloz/i.test(combined)) {
-        return true;
-    }
-
-    if (/^qa[a-z0-9]+$/i.test(handle) || /^q[a-z]\d{4,}$/i.test(handle)) {
-        return true;
-    }
-
-    return /\b(teste|test|qa|demo|bot|speed)\b/i.test(combined);
-}
-
-function isGeneratedTestPost(post) {
-    if (!post || typeof post !== "object") {
-        return false;
-    }
-
-    const combined = [
-        String(post.title || ""),
-        String(post.caption || ""),
-        ...(Array.isArray(post.tags) ? post.tags : [])
-    ]
-        .join(" ")
-        .toLowerCase();
-
-    return /#teste|\bteste\b|\bqa\b|\bveloz\b|\bdemo\b|\bspeed\b/.test(combined);
-}
-
 function createHttpError(statusCode, message) {
     const error = new Error(message);
     error.statusCode = statusCode;
@@ -548,7 +495,35 @@ async function handleApi(request, response, requestUrl, context) {
         scheduleDatabaseSave();
         sendAuthCookies(response, context);
         sendJson(response, 200, {
-            db: sanitizeDatabaseForClient(db, context.user)
+            db: sanitizeDatabaseForClient(db, context.user),
+            meta: getStorageMeta()
+        });
+        return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/recovery/export") {
+        sendAuthCookies(response, context);
+        sendJson(response, 200, {
+            snapshot: buildRecoverySnapshotForOwner(context.ownerKey, context.user),
+            meta: getStorageMeta()
+        });
+        return;
+    }
+
+    if (request.method === "POST" && pathname === "/api/recovery/import") {
+        const body = await readJsonBody(request);
+        const ownerKey = ensureOwnerKey(context);
+        const restored = restoreRecoverySnapshot(body.snapshot, request, ownerKey);
+        if (restored.sessionToken) {
+            context.sessionToken = restored.sessionToken;
+            context.session = getSessionByToken(restored.sessionToken);
+            context.user = restored.user;
+        }
+        sendAuthCookies(response, context);
+        saveDatabase(db);
+        sendJson(response, 200, {
+            db: sanitizeDatabaseForClient(db, context.user),
+            meta: getStorageMeta()
         });
         return;
     }
@@ -564,7 +539,8 @@ async function handleApi(request, response, requestUrl, context) {
         sendAuthCookies(response, context);
         saveDatabase(db);
         sendJson(response, 201, {
-            db: sanitizeDatabaseForClient(db, user)
+            db: sanitizeDatabaseForClient(db, user),
+            meta: getStorageMeta()
         });
         return;
     }
@@ -573,13 +549,15 @@ async function handleApi(request, response, requestUrl, context) {
         const body = await readJsonBody(request);
         const user = loginUser(body, request);
         const sessionToken = createSessionForUser(user.id, request);
+        context.ownerKey = sanitizeText(user.ownerKey || context.ownerKey || "", 120) || ensureOwnerKey(context);
         context.user = user;
         context.sessionToken = sessionToken;
         context.session = getSessionByToken(sessionToken);
         sendAuthCookies(response, context);
         saveDatabase(db);
         sendJson(response, 200, {
-            db: sanitizeDatabaseForClient(db, user)
+            db: sanitizeDatabaseForClient(db, user),
+            meta: getStorageMeta()
         });
         return;
     }
@@ -592,7 +570,8 @@ async function handleApi(request, response, requestUrl, context) {
 
         clearCookie(response, sessionCookieName);
         sendJson(response, 200, {
-            db: sanitizeDatabaseForClient(db, null)
+            db: sanitizeDatabaseForClient(db, null),
+            meta: getStorageMeta()
         });
         return;
     }
@@ -604,7 +583,8 @@ async function handleApi(request, response, requestUrl, context) {
         touchViewerPresence(user, context.session);
         saveDatabase(db);
         sendJson(response, 200, {
-            db: sanitizeDatabaseForClient(db, user)
+            db: sanitizeDatabaseForClient(db, user),
+            meta: getStorageMeta()
         });
         return;
     }
@@ -629,7 +609,8 @@ async function handleApi(request, response, requestUrl, context) {
         saveDatabase(db);
         sendJson(response, 201, {
             postId: post.id,
-            db: sanitizeDatabaseForClient(db, user)
+            db: sanitizeDatabaseForClient(db, user),
+            meta: getStorageMeta()
         });
         return;
     }
@@ -797,13 +778,17 @@ async function handleApi(request, response, requestUrl, context) {
 function getRequestContext(request, response) {
     pruneExpiredSessions();
     const cookies = parseCookies(request.headers.cookie || "");
-    const ownerKey = cookies[ownerCookieName] ? sanitizeText(cookies[ownerCookieName], 120) : "";
+    let ownerKey = cookies[ownerCookieName] ? sanitizeText(cookies[ownerCookieName], 120) : "";
     const sessionToken = cookies[sessionCookieName] ? sanitizeText(cookies[sessionCookieName], 240) : "";
     const session = getSessionByToken(sessionToken);
     let user = session ? getUserById(session.userId) : null;
 
     if (user?.isBanned) {
         user = null;
+    }
+
+    if (user && !ownerKey && user.ownerKey) {
+        ownerKey = sanitizeText(user.ownerKey, 120);
     }
 
     if (!user && sessionToken) {
@@ -1438,6 +1423,235 @@ function sanitizeDatabaseForClient(sourceDb, viewer) {
         directThreads: viewerId ? getDirectThreadsForViewer(viewerId, publicUserIds) : [],
         recentAccountIds: [],
         sessions: []
+    };
+}
+
+function buildRecoverySnapshotForOwner(ownerKey, viewer) {
+    const normalizedOwnerKey = sanitizeText(ownerKey || "", 120);
+
+    if (!normalizedOwnerKey) {
+        return null;
+    }
+
+    const ownedUsers = db.users
+        .filter((user) => sanitizeText(user.ownerKey || "", 120) === normalizedOwnerKey)
+        .map((user) => ({
+            id: user.id,
+            name: user.name,
+            handle: user.handle,
+            bio: user.bio,
+            statusNote: user.statusNote || "",
+            location: user.location,
+            website: user.website,
+            profileVisibility: user.profileVisibility,
+            presenceVisibility: user.presenceVisibility,
+            avatarImage: user.avatarImage,
+            avatarFocusX: user.avatarFocusX,
+            avatarFocusY: user.avatarFocusY,
+            avatarScale: user.avatarScale,
+            avatarTone: user.avatarTone,
+            profileTheme: user.profileTheme,
+            highlightPostId: user.highlightPostId || "",
+            coverImage: user.coverImage,
+            coverFocusX: user.coverFocusX,
+            coverFocusY: user.coverFocusY,
+            coverScale: user.coverScale,
+            role: user.role,
+            isBanned: user.isBanned,
+            ownerKey: user.ownerKey,
+            passwordHash: user.passwordHash,
+            createdAt: user.createdAt,
+            lastLoginAt: user.lastLoginAt,
+            lastSeenAt: user.lastSeenAt
+        }));
+
+    if (!ownedUsers.length) {
+        return null;
+    }
+
+    const ownedUserIds = new Set(ownedUsers.map((user) => user.id));
+    const ownedPosts = db.posts.filter((post) => ownedUserIds.has(post.authorId)).map((post) => ({
+        ...post
+    }));
+    const ownedPostIds = new Set(ownedPosts.map((post) => post.id));
+    const viewerId = viewer?.id || null;
+    const preferredSessionUserId = viewerId && ownedUserIds.has(viewerId) ? viewerId : ownedUsers[0]?.id || null;
+
+    return {
+        version: 1,
+        exportedAt: Date.now(),
+        sessionUserId: preferredSessionUserId,
+        users: ownedUsers,
+        posts: ownedPosts,
+        likesByUser: filterOwnedMapByVisiblePosts(db.likesByUser, ownedUserIds, ownedPostIds),
+        boostsByUser: filterOwnedMapByVisiblePosts(db.boostsByUser, ownedUserIds, ownedPostIds),
+        savesByUser: filterOwnedMapByVisiblePosts(db.savesByUser, ownedUserIds, ownedPostIds),
+        followsByUser: filterOwnedFollowMap(db.followsByUser, ownedUserIds),
+        commentsByPost: filterOwnedComments(db.commentsByPost, ownedPostIds, ownedUserIds),
+        activitiesByUser: filterOwnedActivities(db.activitiesByUser, ownedUserIds, ownedPostIds),
+        alertsSeenAtByUser: filterOwnedTimestampMap(db.alertsSeenAtByUser, ownedUserIds),
+        viewHistoryByUser: filterOwnedViewHistory(db.viewHistoryByUser, ownedUserIds, ownedPostIds),
+        directThreads: filterOwnedDirectThreads(db.directThreads, ownedUserIds),
+        recentAccountIds: (db.recentAccountIds || []).filter((userId) => ownedUserIds.has(userId)).slice(0, 10)
+    };
+}
+
+function filterOwnedMapByVisiblePosts(map, ownedUserIds, ownedPostIds) {
+    const result = {};
+
+    Object.entries(map || {}).forEach(([userId, postIds]) => {
+        if (!ownedUserIds.has(userId) || !Array.isArray(postIds)) {
+            return;
+        }
+
+        result[userId] = uniqueList(postIds.filter((postId) => ownedPostIds.has(postId)));
+    });
+
+    return result;
+}
+
+function filterOwnedFollowMap(map, ownedUserIds) {
+    const result = {};
+
+    Object.entries(map || {}).forEach(([userId, followedIds]) => {
+        if (!ownedUserIds.has(userId) || !Array.isArray(followedIds)) {
+            return;
+        }
+
+        result[userId] = uniqueList(followedIds.filter((followedId) => ownedUserIds.has(followedId)));
+    });
+
+    return result;
+}
+
+function filterOwnedComments(map, ownedPostIds, ownedUserIds) {
+    const result = {};
+
+    Object.entries(map || {}).forEach(([postId, comments]) => {
+        if (!ownedPostIds.has(postId) || !Array.isArray(comments)) {
+            return;
+        }
+
+        result[postId] = comments.filter((comment) => ownedUserIds.has(comment.authorId));
+    });
+
+    return result;
+}
+
+function filterOwnedActivities(map, ownedUserIds, ownedPostIds) {
+    const result = {};
+
+    Object.entries(map || {}).forEach(([userId, activities]) => {
+        if (!ownedUserIds.has(userId) || !Array.isArray(activities)) {
+            return;
+        }
+
+        result[userId] = activities.filter((entry) => {
+            return ownedUserIds.has(entry.actorUserId) && (!entry.postId || ownedPostIds.has(entry.postId));
+        });
+    });
+
+    return result;
+}
+
+function filterOwnedTimestampMap(map, ownedUserIds) {
+    const result = {};
+
+    Object.entries(map || {}).forEach(([userId, value]) => {
+        if (!ownedUserIds.has(userId)) {
+            return;
+        }
+
+        result[userId] = Math.max(0, Number(value) || 0);
+    });
+
+    return result;
+}
+
+function filterOwnedViewHistory(map, ownedUserIds, ownedPostIds) {
+    const result = {};
+
+    Object.entries(map || {}).forEach(([userId, entries]) => {
+        if (!ownedUserIds.has(userId) || !Array.isArray(entries)) {
+            return;
+        }
+
+        result[userId] = entries.filter((entry) => ownedPostIds.has(entry.postId)).slice(0, 180);
+    });
+
+    return result;
+}
+
+function filterOwnedDirectThreads(threads, ownedUserIds) {
+    return (Array.isArray(threads) ? threads : [])
+        .filter((thread) => Array.isArray(thread.participantIds) && thread.participantIds.every((userId) => ownedUserIds.has(userId)))
+        .map((thread) => ({
+            ...thread,
+            messages: Array.isArray(thread.messages)
+                ? thread.messages.map((message) => ({
+                      ...message,
+                      readBy: uniqueList(Array.isArray(message.readBy) ? message.readBy.filter((userId) => ownedUserIds.has(userId)) : [])
+                  }))
+                : []
+        }));
+}
+
+function canImportRecoverySnapshot(nextDb) {
+    const nonSeedUsers = (Array.isArray(nextDb.users) ? nextDb.users : []).filter((user) => {
+        return sanitizeText(user?.ownerKey || "", 120) !== "seed-admin";
+    });
+
+    return !nonSeedUsers.length && !(nextDb.posts || []).length && !(nextDb.directThreads || []).length;
+}
+
+function restoreRecoverySnapshot(snapshot, request, ownerKey) {
+    if (!canImportRecoverySnapshot(db)) {
+        throw createHttpError(409, "A rede ja tem dados salvos. A restauracao local so entra quando o banco volta vazio.");
+    }
+
+    if (!snapshot || typeof snapshot !== "object") {
+        throw createHttpError(400, "Nao encontramos um backup valido neste navegador.");
+    }
+
+    const candidateDb = createDb();
+    candidateDb.version = Math.max(4, Number(snapshot.version) || 4);
+    candidateDb.users = Array.isArray(snapshot.users) ? snapshot.users : [];
+    candidateDb.posts = Array.isArray(snapshot.posts) ? snapshot.posts : [];
+    candidateDb.likesByUser = snapshot.likesByUser && typeof snapshot.likesByUser === "object" ? snapshot.likesByUser : {};
+    candidateDb.boostsByUser = snapshot.boostsByUser && typeof snapshot.boostsByUser === "object" ? snapshot.boostsByUser : {};
+    candidateDb.savesByUser = snapshot.savesByUser && typeof snapshot.savesByUser === "object" ? snapshot.savesByUser : {};
+    candidateDb.followsByUser = snapshot.followsByUser && typeof snapshot.followsByUser === "object" ? snapshot.followsByUser : {};
+    candidateDb.commentsByPost = snapshot.commentsByPost && typeof snapshot.commentsByPost === "object" ? snapshot.commentsByPost : {};
+    candidateDb.activitiesByUser = snapshot.activitiesByUser && typeof snapshot.activitiesByUser === "object" ? snapshot.activitiesByUser : {};
+    candidateDb.alertsSeenAtByUser = snapshot.alertsSeenAtByUser && typeof snapshot.alertsSeenAtByUser === "object" ? snapshot.alertsSeenAtByUser : {};
+    candidateDb.viewHistoryByUser = snapshot.viewHistoryByUser && typeof snapshot.viewHistoryByUser === "object" ? snapshot.viewHistoryByUser : {};
+    candidateDb.directThreads = Array.isArray(snapshot.directThreads) ? snapshot.directThreads : [];
+    candidateDb.recentAccountIds = Array.isArray(snapshot.recentAccountIds) ? snapshot.recentAccountIds : [];
+    candidateDb.sessions = [];
+
+    ensureSeedAdmin(candidateDb);
+    cleanupDatabase(candidateDb);
+
+    const normalizedOwnerKey = sanitizeText(ownerKey || "", 120);
+    const ownedUsers = candidateDb.users.filter((user) => sanitizeText(user.ownerKey || "", 120) === normalizedOwnerKey);
+
+    if (!ownedUsers.length) {
+        throw createHttpError(400, "O backup encontrado nao combina com as contas deste navegador.");
+    }
+
+    db = candidateDb;
+
+    const requestedUserId = typeof snapshot.sessionUserId === "string" ? snapshot.sessionUserId : "";
+    const sessionUser = ownedUsers.find((user) => user.id === requestedUserId) || ownedUsers[0] || null;
+    const sessionToken = sessionUser ? createSessionForUser(sessionUser.id, request) : "";
+
+    if (sessionUser) {
+        touchViewerPresence(sessionUser, getSessionByToken(sessionToken));
+    }
+
+    return {
+        sessionToken,
+        user: sessionUser
     };
 }
 

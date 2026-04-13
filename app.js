@@ -1,4 +1,5 @@
 const DB_KEY = "conquest-db-v2";
+const RECOVERY_KEY = "conquest-recovery-v1";
 const PREFS_KEY = "conquest-prefs-v1";
 const LEGACY_KEYS = ["conquest-social-v1"];
 const CATEGORIES = ["Todos", "Ilustracao", "Fotografia", "Sketch", "Poster", "Moda", "3D", "Editorial"];
@@ -106,10 +107,16 @@ const logoAssets = {
 };
 const likeBurstTimers = new Map();
 let prefsPersistTimer = null;
+let recoveryPersistTimer = null;
+let recoverySyncPromise = null;
 
 const state = {
     db: loadDb(),
     prefs: loadPrefs(),
+    runtime: {
+        storageMode: "unknown",
+        recoveryFallbackEnabled: false
+    },
     ui: {
         authView: "login",
         view: "home",
@@ -138,6 +145,7 @@ const state = {
         orderSnapshots: {},
         searchFocus: false,
         bootstrappingSession: true,
+        recoveryAttempted: false,
         authPendingMode: "",
         publishingPost: false,
         sendingDirect: false,
@@ -508,8 +516,91 @@ function persistDb() {
     }
 }
 
+function loadRecoverySnapshot() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(RECOVERY_KEY));
+
+        if (!parsed || typeof parsed !== "object") {
+            return null;
+        }
+
+        return parsed;
+    } catch (error) {
+        return null;
+    }
+}
+
+function persistRecoverySnapshot(snapshot) {
+    try {
+        if (!snapshot) {
+            localStorage.removeItem(RECOVERY_KEY);
+            return;
+        }
+
+        localStorage.setItem(RECOVERY_KEY, JSON.stringify(snapshot));
+    } catch (error) {
+        console.warn("Nao deu para salvar o backup local.", error);
+    }
+}
+
 function persistPrefs() {
     localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
+}
+
+function scheduleRecoverySnapshotRefresh(delayMs = 1200) {
+    if (!state.db.sessionUserId) {
+        return;
+    }
+
+    if (recoveryPersistTimer) {
+        window.clearTimeout(recoveryPersistTimer);
+    }
+
+    recoveryPersistTimer = window.setTimeout(() => {
+        recoveryPersistTimer = null;
+        void refreshRecoverySnapshot();
+    }, Math.max(320, Number(delayMs) || 1200));
+}
+
+async function refreshRecoverySnapshot() {
+    if (!state.db.sessionUserId) {
+        return null;
+    }
+
+    if (recoverySyncPromise) {
+        return recoverySyncPromise;
+    }
+
+    recoverySyncPromise = (async () => {
+        try {
+            const response = await fetch("/api/recovery/export", {
+                credentials: "same-origin"
+            });
+
+            if (!response.ok) {
+                return null;
+            }
+
+            const payload = await response.json();
+
+            if (payload?.meta) {
+                applyServerMeta(payload.meta);
+            }
+
+            if (payload?.snapshot) {
+                persistRecoverySnapshot(payload.snapshot);
+            }
+
+            return payload?.snapshot || null;
+        } catch (error) {
+            console.warn("Nao deu para atualizar o backup local.", error);
+            return null;
+        } finally {
+            recoverySyncPromise = null;
+        }
+    })();
+
+    return recoverySyncPromise;
 }
 
 function schedulePrefsPersist(delayMs = 160) {
@@ -607,10 +698,74 @@ function normalizeClientDb(rawDb) {
     };
 }
 
+function applyServerMeta(meta) {
+    state.runtime.storageMode = meta?.storageMode === "volatile" ? "volatile" : "persistent";
+    state.runtime.recoveryFallbackEnabled = Boolean(meta?.recoveryFallbackEnabled);
+}
+
 function applyServerDb(rawDb) {
     state.db = normalizeClientDb(rawDb);
     cleanupDatabase();
     persistDb();
+
+    if (state.db.sessionUserId) {
+        scheduleRecoverySnapshotRefresh();
+    }
+}
+
+function hasUsefulRecoverySnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") {
+        return false;
+    }
+
+    const exportedAt = Number(snapshot.exportedAt) || 0;
+    const ageMs = Date.now() - exportedAt;
+    const hasUsers = Array.isArray(snapshot.users) && snapshot.users.length > 0;
+    const hasPosts = Array.isArray(snapshot.posts) && snapshot.posts.length > 0;
+
+    return (hasUsers || hasPosts) && ageMs < 1000 * 60 * 60 * 24 * 45;
+}
+
+function isServerStateRecoverable(rawDb) {
+    const db = normalizeClientDb(rawDb);
+    return db.users.length <= 1 && db.posts.length === 0 && db.directThreads.length === 0;
+}
+
+async function attemptRecoveryFromSnapshot() {
+    if (
+        state.ui.recoveryAttempted ||
+        !state.runtime.recoveryFallbackEnabled ||
+        state.runtime.storageMode !== "volatile" ||
+        !isServerStateRecoverable(state.db)
+    ) {
+        return false;
+    }
+
+    const snapshot = loadRecoverySnapshot();
+
+    state.ui.recoveryAttempted = true;
+
+    if (!hasUsefulRecoverySnapshot(snapshot)) {
+        return false;
+    }
+
+    setBusyOverlay("Restaurando sua rede", "Recuperando contas e posts salvos neste navegador.");
+
+    try {
+        await apiRequest("/api/recovery/import", {
+            method: "POST",
+            body: {
+                snapshot
+            }
+        });
+        showToast("Backup local restaurado.");
+        return true;
+    } catch (error) {
+        console.warn("Nao deu para restaurar o backup local.", error);
+        return false;
+    } finally {
+        clearBusyOverlay();
+    }
 }
 
 async function apiRequest(path, options = {}) {
@@ -637,6 +792,10 @@ async function apiRequest(path, options = {}) {
         throw new Error(payload.error || "Nao foi possivel concluir essa acao.");
     }
 
+    if (payload.meta) {
+        applyServerMeta(payload.meta);
+    }
+
     if (payload.db) {
         applyServerDb(payload.db);
     }
@@ -647,6 +806,11 @@ async function apiRequest(path, options = {}) {
 async function bootstrapSession() {
     try {
         await apiRequest("/api/session");
+        await attemptRecoveryFromSnapshot();
+
+        if (state.db.sessionUserId) {
+            scheduleRecoverySnapshotRefresh(120);
+        }
     } catch (error) {
         showToast("Nao deu para sincronizar a sessao agora.");
     } finally {
@@ -2915,8 +3079,24 @@ function renderDiscoveryRail(user, posts, options = {}) {
     const topics = getTrendingTags(posts, 5);
     const query = state.ui.query.trim();
     const searchUsers = query ? getMatchingUsers(query, user.id).slice(0, 4) : [];
+    const backupCard =
+        state.runtime.storageMode === "volatile"
+            ? renderRailSection({
+                  kicker: "Persistencia",
+                  title: "Backup local ativo",
+                  text: "Esse deploy pode reiniciar com o banco vazio. O navegador guarda um backup e tenta restaurar sua conta e seus posts automaticamente.",
+                  content: `
+                      <div class="status-card status-card--warning">
+                          <strong>Protecao extra ligada</strong>
+                          <span>Sempre que voce navegar logado, o app atualiza um snapshot local para reduzir perda de dados em redeploy sem volume persistente.</span>
+                      </div>
+                  `,
+                  className: "rail-card--status"
+              })
+            : "";
 
     return `
+        ${backupCard}
         ${
             query
                 ? renderRailSection({
