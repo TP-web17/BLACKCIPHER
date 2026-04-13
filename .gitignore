@@ -4,3 +4,5 @@ data/*
 !data/.gitkeep
 .env
 temp_*.txt
+quick-check.log
+*.backup
