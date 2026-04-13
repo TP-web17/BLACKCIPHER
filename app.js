@@ -1101,11 +1101,12 @@ function bindEvents() {
             return;
         }
 
-        const authViewButton = event.target.closest("[data-auth-view]");
-        const tabButton = event.target.closest("[data-tab-group]");
-        const filterButton = event.target.closest("[data-filter]");
-        const viewButton = event.target.closest("[data-view]");
-        const actionButton = event.target.closest("[data-action]");
+        const nearestActionable = event.target.closest(delegatedSelector);
+        const authViewButton = nearestActionable?.matches("[data-auth-view]") ? nearestActionable : null;
+        const tabButton = nearestActionable?.matches("[data-tab-group]") ? nearestActionable : null;
+        const filterButton = nearestActionable?.matches("[data-filter]") ? nearestActionable : null;
+        const actionButton = nearestActionable?.matches("[data-action]") ? nearestActionable : null;
+        const viewButton = nearestActionable?.matches("[data-view]") ? nearestActionable : null;
         const currentUser = getCurrentUser();
 
         if (!event.target.closest("#topUserPill") && state.ui.profileMenuOpen) {
