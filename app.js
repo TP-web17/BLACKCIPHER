@@ -109,6 +109,9 @@ const likeBurstTimers = new Map();
 let prefsPersistTimer = null;
 let recoveryPersistTimer = null;
 let recoverySyncPromise = null;
+let touchActivationState = null;
+let lastSyntheticTouchTarget = null;
+let lastSyntheticTouchAt = 0;
 
 const state = {
     db: loadDb(),
@@ -933,7 +936,79 @@ function bindEvents() {
         }
     });
 
+    const delegatedSelector = "[data-auth-view], [data-tab-group], [data-filter], [data-view], [data-action]";
+
+    document.addEventListener(
+        "pointerdown",
+        (event) => {
+            if (event.pointerType !== "touch" && event.pointerType !== "pen") {
+                return;
+            }
+
+            const actionable = event.target.closest(delegatedSelector);
+            touchActivationState = actionable
+                ? {
+                      target: actionable,
+                      x: event.clientX,
+                      y: event.clientY
+                  }
+                : null;
+        },
+        { passive: true }
+    );
+
+    document.addEventListener(
+        "pointerup",
+        (event) => {
+            if ((event.pointerType !== "touch" && event.pointerType !== "pen") || !touchActivationState) {
+                return;
+            }
+
+            const actionable = event.target.closest(delegatedSelector);
+            const movement = Math.hypot(event.clientX - touchActivationState.x, event.clientY - touchActivationState.y);
+            const shouldActivate =
+                actionable &&
+                actionable === touchActivationState.target &&
+                movement <= 12;
+
+            touchActivationState = null;
+
+            if (!shouldActivate) {
+                return;
+            }
+
+            event.preventDefault();
+            lastSyntheticTouchTarget = actionable;
+            lastSyntheticTouchAt = Date.now();
+            actionable.dispatchEvent(
+                new MouseEvent("click", {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                })
+            );
+        },
+        { passive: false }
+    );
+
+    document.addEventListener("pointercancel", () => {
+        touchActivationState = null;
+    });
+
     document.addEventListener("click", async (event) => {
+        const syntheticDuplicateTarget = event.target.closest(delegatedSelector);
+
+        if (
+            event.isTrusted &&
+            syntheticDuplicateTarget &&
+            syntheticDuplicateTarget === lastSyntheticTouchTarget &&
+            Date.now() - lastSyntheticTouchAt < 900
+        ) {
+            lastSyntheticTouchTarget = null;
+            lastSyntheticTouchAt = 0;
+            return;
+        }
+
         const authViewButton = event.target.closest("[data-auth-view]");
         const tabButton = event.target.closest("[data-tab-group]");
         const filterButton = event.target.closest("[data-filter]");
