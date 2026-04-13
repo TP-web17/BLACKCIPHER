@@ -7,10 +7,10 @@
     <link rel="icon" id="siteFavicon" type="image/jpeg" href="logo.jpeg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body data-theme="light">
+<body data-theme="dark">
     <div class="page-noise" aria-hidden="true"></div>
     <div class="loading-overlay is-hidden" id="loadingOverlay" aria-hidden="true">
         <div class="loading-overlay-card" role="status" aria-live="polite" aria-atomic="true">
@@ -106,7 +106,7 @@
                             <path d="M4.5 10.5 12 4.5l7.5 6V19a1.5 1.5 0 0 1-1.5 1.5H14V14h-4v6.5H6A1.5 1.5 0 0 1 4.5 19Z"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Home</span>
+                    <span class="nav-label">Inicio</span>
                 </button>
                 <button class="nav-link" type="button" data-view="discussions">
                     <span class="nav-symbol" aria-hidden="true">
@@ -116,7 +116,7 @@
                             <path d="M8.5 11.5H13"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Conversas</span>
+                    <span class="nav-label">Debates</span>
                 </button>
                 <button class="nav-link" type="button" data-view="messages">
                     <span class="nav-symbol" aria-hidden="true">
@@ -126,7 +126,7 @@
                             <path d="M8.5 11.5H13"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Inbox</span>
+                    <span class="nav-label">Mensagens</span>
                 </button>
                 <button class="nav-link" type="button" data-view="following">
                     <span class="nav-symbol" aria-hidden="true">
@@ -134,7 +134,7 @@
                             <path d="m12 4.5 1.8 4.4 4.4 1.8-4.4 1.8-1.8 4.4-1.8-4.4-4.4-1.8 4.4-1.8Z"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Explorar</span>
+                    <span class="nav-label">Feed</span>
                 </button>
                 <button class="nav-link" type="button" data-view="saved">
                     <span class="nav-symbol" aria-hidden="true">
@@ -142,7 +142,7 @@
                             <path d="M7.5 4.5h9A1.5 1.5 0 0 1 18 6v13.5L12 16.2 6 19.5V6a1.5 1.5 0 0 1 1.5-1.5Z"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Salvos</span>
+                    <span class="nav-label">Colecao</span>
                 </button>
                 <button class="nav-link" type="button" data-view="activity">
                     <span class="nav-symbol" aria-hidden="true">
@@ -151,7 +151,7 @@
                             <path d="M10.25 18.25a1.75 1.75 0 0 0 3.5 0"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Atividade</span>
+                    <span class="nav-label">Alertas</span>
                 </button>
                 <button class="nav-link" type="button" data-view="profile">
                     <span class="nav-symbol" aria-hidden="true">
@@ -171,7 +171,7 @@
                         <path d="M5 12h14"></path>
                     </svg>
                 </span>
-                <span class="button-text">Postar agora</span>
+                <span class="button-text">Criar post</span>
             </button>
             <div class="sidebar-quick-panel" aria-label="Atalhos rapidos">
                 <button class="sidebar-quick-button" type="button" data-view="messages" aria-label="Abrir inbox">
@@ -208,12 +208,15 @@
         <div class="app-main">
             <header class="topbar" id="appTopbar">
                 <div class="topbar-search-row">
-                    <label class="searchbar" for="globalSearch">
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M10.5 4a6.5 6.5 0 1 0 4.03 11.6l4.44 4.44 1.41-1.41-4.44-4.44A6.5 6.5 0 0 0 10.5 4m0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9"></path>
-                        </svg>
-                        <input id="globalSearch" type="search" placeholder="Buscar posts, pessoas ou tags">
-                    </label>
+                    <div class="searchbar-shell" id="searchbarShell">
+                        <label class="searchbar" for="globalSearch">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M10.5 4a6.5 6.5 0 1 0 4.03 11.6l4.44 4.44 1.41-1.41-4.44-4.44A6.5 6.5 0 0 0 10.5 4m0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9"></path>
+                            </svg>
+                            <input id="globalSearch" type="search" placeholder="Busque pessoas, posts ou assuntos" autocomplete="off" spellcheck="false">
+                        </label>
+                        <div class="search-suggestions" id="searchSuggestions"></div>
+                    </div>
                 </div>
 
                 <div class="topbar-main-row">
@@ -274,7 +277,7 @@
                                     <path d="M5 12h14"></path>
                                 </svg>
                             </span>
-                            <span class="button-text">Postar</span>
+                            <span class="button-text">Criar</span>
                         </button>
                         <div class="user-pill" id="topUserPill"></div>
                     </div>
@@ -290,7 +293,7 @@
                             <path d="M4.5 10.5 12 4.5l7.5 6V19a1.5 1.5 0 0 1-1.5 1.5H14V14h-4v6.5H6A1.5 1.5 0 0 1 4.5 19Z"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Home</span>
+                    <span class="nav-label">Inicio</span>
                 </button>
                 <button class="mobile-link" type="button" data-view="following">
                     <span class="nav-symbol" aria-hidden="true">
@@ -307,7 +310,7 @@
                             <path d="M5 12h14"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Postar</span>
+                    <span class="nav-label">Criar</span>
                 </button>
                 <button class="mobile-link" type="button" data-view="discussions">
                     <span class="nav-symbol" aria-hidden="true">
@@ -317,7 +320,7 @@
                             <path d="M8.5 11.5H13"></path>
                         </svg>
                     </span>
-                    <span class="nav-label">Papo</span>
+                    <span class="nav-label">Debates</span>
                 </button>
                 <button class="mobile-link" type="button" data-view="profile">
                     <span class="nav-symbol" aria-hidden="true">

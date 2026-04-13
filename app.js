@@ -15,11 +15,11 @@ const POST_FONT_PRESETS = [
     { id: "editorial", label: "Editorial" },
     { id: "poster", label: "Poster" }
 ];
-const DEFAULT_SITE_ACCENT = "#8ea9ff";
-const SITE_ACCENT_SWATCHES = ["#8ea9ff", "#7cd7c5", "#ff8fbd", "#ffd36f", "#b59dff", "#8fd0ff", "#a9e36b", "#ffb27d"];
+const DEFAULT_SITE_ACCENT = "#8b5cf6";
+const SITE_ACCENT_SWATCHES = ["#8b5cf6", "#a855f7", "#ec4899", "#22d3ee", "#38bdf8", "#f59e0b", "#84cc16", "#f97316"];
 const SITE_THEME_OPTIONS = [
     { id: "light", label: "Claro" },
-    { id: "dark", label: "Noturno" }
+    { id: "dark", label: "Escuro" }
 ];
 const SITE_SKIN_OPTIONS = [
     { id: "default", label: "Padrao" },
@@ -59,6 +59,17 @@ function createBusyOverlayState(active = false, title = "Carregando", message = 
     };
 }
 
+function createDefaultUiSnapshot() {
+    return {
+        view: "home",
+        query: "",
+        category: "Todos",
+        viewTabs: createDefaultViewTabs(),
+        profileUserId: null,
+        directThreadId: null
+    };
+}
+
 const authScreen = document.getElementById("authScreen");
 const appShell = document.getElementById("appShell");
 const authTrackA = document.getElementById("authTrackA");
@@ -70,6 +81,8 @@ const appTopbar = document.getElementById("appTopbar");
 const themeToggle = document.getElementById("themeToggle");
 const siteFavicon = document.getElementById("siteFavicon");
 const globalSearch = document.getElementById("globalSearch");
+const searchbarShell = document.getElementById("searchbarShell");
+const searchSuggestions = document.getElementById("searchSuggestions");
 const sidebarUser = document.getElementById("sidebarUser");
 const topbarAlertsShell = document.getElementById("topbarAlertsShell");
 const topbarAlertsPreview = document.getElementById("topbarAlertsPreview");
@@ -92,6 +105,7 @@ const logoAssets = {
     promise: null
 };
 const likeBurstTimers = new Map();
+let prefsPersistTimer = null;
 
 const state = {
     db: loadDb(),
@@ -122,6 +136,7 @@ const state = {
         alertsPreviewTab: "unread",
         directThreadId: null,
         orderSnapshots: {},
+        searchFocus: false,
         bootstrappingSession: true,
         authPendingMode: "",
         publishingPost: false,
@@ -136,6 +151,7 @@ const state = {
 
 window.__conquestDebugState = state;
 
+applyUiSnapshot(state.prefs.uiState);
 cleanupLegacyStorage();
 cleanupDatabase();
 initBrandAssets();
@@ -220,16 +236,17 @@ function loadPrefs() {
         const parsed = JSON.parse(localStorage.getItem(PREFS_KEY));
 
         if (!parsed || typeof parsed !== "object") {
-            return { theme: "light", skin: "default", accentColor: DEFAULT_SITE_ACCENT };
+            return { theme: "dark", skin: "default", accentColor: DEFAULT_SITE_ACCENT, uiState: createDefaultUiSnapshot() };
         }
 
         return {
             theme: normalizeSiteTheme(parsed.theme),
             skin: normalizeSiteSkin(parsed.skin),
-            accentColor: normalizeSiteAccent(parsed.accentColor || DEFAULT_SITE_ACCENT)
+            accentColor: normalizeSiteAccent(parsed.accentColor || DEFAULT_SITE_ACCENT),
+            uiState: normalizeUiSnapshot(parsed.uiState)
         };
     } catch (error) {
-        return { theme: "light", skin: "default", accentColor: DEFAULT_SITE_ACCENT };
+        return { theme: "dark", skin: "default", accentColor: DEFAULT_SITE_ACCENT, uiState: createDefaultUiSnapshot() };
     }
 }
 
@@ -495,6 +512,78 @@ function persistPrefs() {
     localStorage.setItem(PREFS_KEY, JSON.stringify(state.prefs));
 }
 
+function schedulePrefsPersist(delayMs = 160) {
+    if (prefsPersistTimer) {
+        window.clearTimeout(prefsPersistTimer);
+    }
+
+    prefsPersistTimer = window.setTimeout(() => {
+        prefsPersistTimer = null;
+        persistPrefs();
+    }, Math.max(80, Number(delayMs) || 160));
+}
+
+function normalizeAppView(value) {
+    return ["home", "discussions", "messages", "following", "saved", "activity", "profile", "moderation"].includes(value)
+        ? value
+        : "home";
+}
+
+function normalizeUiSnapshot(rawState) {
+    const defaults = createDefaultUiSnapshot();
+    const rawViewTabs = rawState && typeof rawState === "object" && rawState.viewTabs && typeof rawState.viewTabs === "object"
+        ? rawState.viewTabs
+        : {};
+    const baseTabs = createDefaultViewTabs();
+
+    return {
+        view: normalizeAppView(rawState?.view),
+        query: sanitizeText(rawState?.query || "", 80),
+        category: CATEGORIES.includes(rawState?.category) ? rawState.category : defaults.category,
+        viewTabs: {
+            ...baseTabs,
+            home: ["trending", "recent", "discover"].includes(rawViewTabs.home) ? rawViewTabs.home : baseTabs.home,
+            homeMode: ["social", "photos"].includes(rawViewTabs.homeMode) ? rawViewTabs.homeMode : baseTabs.homeMode,
+            discussions: ["for-you", "recent", "following"].includes(rawViewTabs.discussions)
+                ? rawViewTabs.discussions
+                : baseTabs.discussions,
+            following: ["all", "following"].includes(rawViewTabs.following) ? rawViewTabs.following : baseTabs.following,
+            saved: ["recent", "liked", "discussed"].includes(rawViewTabs.saved) ? rawViewTabs.saved : baseTabs.saved,
+            activity: ["unread", "history"].includes(rawViewTabs.activity) ? rawViewTabs.activity : baseTabs.activity
+        },
+        profileUserId: typeof rawState?.profileUserId === "string" ? rawState.profileUserId : null,
+        directThreadId: typeof rawState?.directThreadId === "string" ? rawState.directThreadId : null
+    };
+}
+
+function applyUiSnapshot(snapshot) {
+    const normalized = normalizeUiSnapshot(snapshot);
+    state.ui.view = normalized.view;
+    state.ui.query = normalized.query;
+    state.ui.category = normalized.category;
+    state.ui.viewTabs = normalized.viewTabs;
+    state.ui.profileUserId = normalized.profileUserId;
+    state.ui.directThreadId = normalized.directThreadId;
+}
+
+function persistUiSnapshot(options = {}) {
+    state.prefs.uiState = normalizeUiSnapshot({
+        view: state.ui.view,
+        query: state.ui.query,
+        category: state.ui.category,
+        viewTabs: state.ui.viewTabs,
+        profileUserId: state.ui.profileUserId,
+        directThreadId: state.ui.directThreadId
+    });
+
+    if (options.immediate) {
+        persistPrefs();
+        return;
+    }
+
+    schedulePrefsPersist();
+}
+
 function normalizeClientDb(rawDb) {
     if (!rawDb || typeof rawDb !== "object") {
         return createDb();
@@ -595,7 +684,28 @@ function bindEvents() {
 
     globalSearch.addEventListener("input", (event) => {
         state.ui.query = event.target.value.trim();
+        state.ui.searchFocus = true;
         renderView();
+    });
+
+    globalSearch.addEventListener("focus", () => {
+        state.ui.searchFocus = true;
+        renderSearchSuggestions();
+    });
+
+    globalSearch.addEventListener("blur", () => {
+        window.setTimeout(() => {
+            state.ui.searchFocus = false;
+            renderSearchSuggestions();
+        }, 120);
+    });
+
+    globalSearch.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            state.ui.searchFocus = false;
+            globalSearch.blur();
+            renderSearchSuggestions();
+        }
     });
 
     loginForm.addEventListener("submit", async (event) => {
@@ -1782,25 +1892,40 @@ function bindEvents() {
 
     window.addEventListener("beforeunload", () => {
         finalizeActivePostView();
+        persistUiSnapshot({ immediate: true });
     });
 }
 
-function handleRefreshButtonClick(event) {
+async function handleRefreshButtonClick(event) {
     const refreshButton = event.currentTarget;
 
     if (refreshButton.disabled) {
         return;
     }
 
+    const currentScroll = window.scrollY;
     refreshButton.disabled = true;
     refreshButton.style.animation = "none";
     setTimeout(() => {
         refreshButton.style.animation = "spin 0.6s ease-in-out";
     }, 10);
 
-    window.setTimeout(() => {
-        window.location.reload();
-    }, 120);
+    setBusyOverlay("Sincronizando a rede", "Atualizando feed, direct e alertas sem recarregar a pagina.");
+
+    try {
+        await apiRequest("/api/session");
+        renderAll();
+        window.requestAnimationFrame(() => {
+            window.scrollTo({ top: currentScroll, behavior: "auto" });
+        });
+        showToast("Rede atualizada.");
+    } catch (error) {
+        showToast(error.message || "Nao foi possivel atualizar a rede.");
+    } finally {
+        clearBusyOverlay();
+        refreshButton.disabled = false;
+        refreshButton.style.animation = "";
+    }
 }
 
 const api = {
@@ -2010,10 +2135,20 @@ function renderAuthScreen() {
 function renderFrame() {
     const user = getCurrentUser();
     const isLoggedIn = Boolean(user);
+    const shouldHoldFrame = state.ui.bootstrappingSession && !isLoggedIn;
 
-    authScreen.classList.toggle("is-hidden", isLoggedIn);
+    authScreen.classList.toggle("is-hidden", isLoggedIn || shouldHoldFrame);
     appShell.classList.toggle("is-hidden", !isLoggedIn);
     updateThemeToggleControl();
+
+    if (shouldHoldFrame) {
+        sidebarUser.innerHTML = "";
+        topUserPill.innerHTML = "";
+        viewRoot.innerHTML = "";
+        searchSuggestions.innerHTML = "";
+        searchbarShell?.classList.remove("is-open");
+        return;
+    }
 
     if (!isLoggedIn) {
         sidebarUser.innerHTML = "";
@@ -2021,6 +2156,8 @@ function renderFrame() {
         if (topbarAlertsPreview) {
             topbarAlertsPreview.innerHTML = "";
         }
+        searchSuggestions.innerHTML = "";
+        searchbarShell?.classList.remove("is-open");
         topbarAlertsShell?.classList.remove("is-open");
         viewRoot.innerHTML = "";
         syncTopbarAlertsBadge(null);
@@ -2034,13 +2171,15 @@ function renderFrame() {
         state.ui.profileUserId = user.id;
     }
 
-    sidebarUser.innerHTML = "";
+    renderSidebarUser(user);
     renderTopUserPill(user);
     syncTopbarAlertsBadge(user);
     renderTopbarAlertsPreview(user);
     syncTopbarState();
     syncNavigation();
     renderView();
+    renderSearchSuggestions();
+    persistUiSnapshot();
 }
 
 function setBusyOverlay(title, message) {
@@ -2106,10 +2245,10 @@ function updateThemeToggleControl() {
     const textNode = themeToggle.querySelector(".button-text");
 
     if (textNode) {
-        textNode.textContent = "Cor";
+        textNode.textContent = "Studio";
     }
 
-    themeToggle.setAttribute("aria-label", "Abrir personalizacao de cor");
+    themeToggle.setAttribute("aria-label", "Abrir studio visual");
 }
 
 function renderSavedAccounts() {
@@ -2454,6 +2593,7 @@ function renderView() {
 
     if (!currentUser) {
         viewRoot.innerHTML = "";
+        viewRoot.dataset.view = "";
         return;
     }
 
@@ -2477,11 +2617,16 @@ function renderView() {
                   : renderHomeView(currentUser);
 
     viewRoot.innerHTML = markup;
+    viewRoot.dataset.view = state.ui.view;
+    appShell.dataset.view = state.ui.view;
 
     if (state.ui.view === "messages") {
         syncDirectFormState();
         scrollActiveDirectThreadToEnd();
     }
+
+    renderSearchSuggestions();
+    persistUiSnapshot();
 }
 
 function syncDirectFormState() {
@@ -2491,7 +2636,7 @@ function syncDirectFormState() {
         return;
     }
 
-    const messageInput = directForm.querySelector('input[name="message"]');
+    const messageInput = directForm.querySelector('textarea[name="message"], input[name="message"]');
     const submitButton = directForm.querySelector('button[type="submit"]');
 
     if (messageInput) {
@@ -2518,6 +2663,416 @@ function scrollActiveDirectThreadToEnd() {
     });
 }
 
+function renderSocialScreen({ hero = "", main = "", rail = "", className = "" }) {
+    return `
+        <div class="view-stack social-screen ${className}">
+            ${hero}
+            <div class="social-screen-grid ${rail ? "has-rail" : ""}">
+                <div class="social-main-column">
+                    ${main}
+                </div>
+                ${
+                    rail
+                        ? `
+                            <aside class="social-rail-column">
+                                ${rail}
+                            </aside>
+                        `
+                        : ""
+                }
+            </div>
+        </div>
+    `;
+}
+
+function renderRailSection({ kicker, title, text = "", content = "", className = "" }) {
+    return `
+        <section class="section-shell rail-card ${className}">
+            <div class="rail-card-head">
+                <span class="section-kicker">${escapeHtml(kicker)}</span>
+                <div>
+                    <h3>${escapeHtml(title)}</h3>
+                    ${text ? `<p class="section-note">${escapeHtml(text)}</p>` : ""}
+                </div>
+            </div>
+            ${content}
+        </section>
+    `;
+}
+
+function renderRailMetricGrid(items) {
+    return `
+        <div class="rail-metric-grid">
+            ${items
+                .map(
+                    (item) => `
+                        <article class="rail-metric-card">
+                            <strong>${escapeHtml(item.value)}</strong>
+                            <span>${escapeHtml(item.label)}</span>
+                        </article>
+                    `
+                )
+                .join("")}
+        </div>
+    `;
+}
+
+function renderMiniUserRow(user, viewerId) {
+    if (!user) {
+        return "";
+    }
+
+    const isOwnProfile = user.id === viewerId;
+    const isFollowed = !isOwnProfile && getFollowingIds(viewerId).includes(user.id);
+
+    return `
+        <article class="rail-user-item">
+            <button class="rail-user-main" type="button" data-action="open-profile" data-user-id="${escapeHtml(user.id)}">
+                ${renderAvatar(user, "mini-avatar")}
+                <div class="rail-user-copy">
+                    <strong>${escapeHtml(user.name)}</strong>
+                    <span>@${escapeHtml(user.handle)}</span>
+                </div>
+            </button>
+            ${
+                isOwnProfile
+                    ? `<button class="ghost-button ghost-button--compact" type="button" data-action="open-profile-editor">Editar</button>`
+                    : `
+                        <button
+                            class="follow-button follow-button--compact ${isFollowed ? "is-active" : ""}"
+                            type="button"
+                            data-action="toggle-follow"
+                            data-user-id="${escapeHtml(user.id)}"
+                        >
+                            ${escapeHtml(isFollowed ? "Seguindo" : "Seguir")}
+                        </button>
+                    `
+            }
+        </article>
+    `;
+}
+
+function renderMiniPostRow(post) {
+    if (!post) {
+        return "";
+    }
+
+    return `
+        <button class="rail-post-item" type="button" data-action="open-post" data-post-id="${escapeHtml(post.id)}">
+            <span class="rail-post-thumb ${sanitizeImageSource(post.imageData || "") ? "has-image" : "is-text"}">
+                ${
+                    sanitizeImageSource(post.imageData || "")
+                        ? `<img src="${escapeAttribute(post.imageData)}" alt="${escapeAttribute(post.title)}">`
+                        : `<span class="rail-post-thumb-icon" aria-hidden="true">${renderIcon(post.postKind === "discussion" ? "comment" : "posts")}</span>`
+                }
+            </span>
+            <span class="rail-post-copy">
+                <strong>${escapeHtml(truncateText(post.title, 46))}</strong>
+                <span>@${escapeHtml(post.author.handle)} · ${escapeHtml(timeAgo(post.createdAt))}</span>
+            </span>
+        </button>
+    `;
+}
+
+function getTrendingTags(posts, limit = 5) {
+    const counts = new Map();
+
+    (posts || []).forEach((post) => {
+        (post.tags || []).forEach((tag) => {
+            counts.set(tag, (counts.get(tag) || 0) + 1);
+        });
+    });
+
+    return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([tag, count]) => ({ tag, count }));
+}
+
+function renderTopicButtonStrip(topics) {
+    return `
+        <div class="rail-topic-list">
+            ${topics
+                .map(
+                    (topic) => `
+                        <button class="rail-topic-chip" type="button" data-action="apply-topic-filter" data-topic="${escapeHtml(topic.tag || topic)}">
+                            <strong>${escapeHtml(topic.tag || topic)}</strong>
+                            ${
+                                topic.count || topic.postsCount
+                                    ? `<span>${escapeHtml(formatMetricLabel(topic.count || topic.postsCount, "post", "posts"))}</span>`
+                                    : ""
+                            }
+                        </button>
+                    `
+                )
+                .join("")}
+        </div>
+    `;
+}
+
+function renderFeedComposerLauncher(user, options = {}) {
+    const prompt = options.prompt || "No que voce esta pensando hoje?";
+    const note = options.note || "Publique rapido, sem abrir um fluxo pesado.";
+
+    return `
+        <section class="composer-launcher">
+            <button class="composer-launcher-main" type="button" data-action="open-composer">
+                ${renderAvatar(user, "mini-avatar")}
+                <div class="composer-launcher-copy">
+                    <strong>${escapeHtml(prompt)}</strong>
+                    <span>${escapeHtml(note)}</span>
+                </div>
+                <span class="composer-launcher-icon" aria-hidden="true">${renderIcon("compose")}</span>
+            </button>
+            <div class="composer-launcher-actions">
+                <button class="ghost-button ghost-button--compact" type="button" data-action="open-composer">
+                    ${renderButtonContent("compose", "Midia")}
+                </button>
+                <button class="ghost-button ghost-button--compact" type="button" data-action="open-discussion-composer">
+                    ${renderButtonContent("comment", "Discussao")}
+                </button>
+            </div>
+        </section>
+    `;
+}
+
+function getSearchSuggestionPosts(viewerId, limit = 4) {
+    return mergeUniquePosts(getRecentPosts(viewerId), getFeedPosts(viewerId), getDiscussionPosts(viewerId)).slice(0, limit);
+}
+
+function getSearchSuggestionTopics(query, posts, viewerId) {
+    const normalizedQuery = String(query || "").trim().toLowerCase();
+    const postTopics = uniqueList((posts || []).flatMap((post) => post.tags || []));
+
+    if (!normalizedQuery) {
+        return getTrendingDiscussionTopics(getDiscussionPosts(viewerId)).slice(0, 4);
+    }
+
+    const matches = postTopics.filter((tag) => tag.toLowerCase().includes(normalizedQuery));
+    return (matches.length ? matches : postTopics.slice(0, 4)).map((tag) => ({ tag }));
+}
+
+function renderSearchSuggestions() {
+    if (!searchSuggestions) {
+        return;
+    }
+
+    const currentUser = getCurrentUser();
+    const query = state.ui.query.trim();
+    const isOpen = Boolean(currentUser && state.ui.searchFocus);
+
+    searchbarShell?.classList.toggle("is-open", isOpen);
+
+    if (!currentUser || !isOpen) {
+        searchSuggestions.innerHTML = "";
+        return;
+    }
+
+    const users = (query ? getMatchingUsers(query, currentUser.id) : getDiscoverUsers(currentUser.id, 4)).slice(0, 4);
+    const posts = getSearchSuggestionPosts(currentUser.id, 4);
+    const topics = getSearchSuggestionTopics(query, posts, currentUser.id);
+
+    searchSuggestions.innerHTML = `
+        <div class="search-suggestions-panel">
+            <div class="search-suggestions-head">
+                <div>
+                    <strong>${escapeHtml(query ? `Buscando por "${query}"` : "Explorar rapido")}</strong>
+                    <span>${escapeHtml(query ? "Perfis, posts e assuntos que combinam com a sua busca." : "Atalhos para entrar em perfis, posts e temas em segundos.")}</span>
+                </div>
+            </div>
+            <div class="search-suggestions-grid">
+                <section class="search-suggestion-group">
+                    <span class="section-kicker">Pessoas</span>
+                    ${
+                        users.length
+                            ? users.map((user) => renderMiniUserRow(user, currentUser.id)).join("")
+                            : `<div class="search-suggestion-empty">Nenhum perfil apareceu com esse termo.</div>`
+                    }
+                </section>
+                <section class="search-suggestion-group">
+                    <span class="section-kicker">Posts</span>
+                    ${
+                        posts.length
+                            ? posts.map((post) => renderMiniPostRow(post)).join("")
+                            : `<div class="search-suggestion-empty">Nenhum post relevante apareceu agora.</div>`
+                    }
+                </section>
+                <section class="search-suggestion-group">
+                    <span class="section-kicker">Assuntos</span>
+                    ${
+                        topics.length
+                            ? renderTopicButtonStrip(topics)
+                            : `<div class="search-suggestion-empty">Tente outro termo para puxar assuntos.</div>`
+                    }
+                </section>
+            </div>
+        </div>
+    `;
+}
+
+function renderDiscoveryRail(user, posts, options = {}) {
+    const discoverUsers = getDiscoverUsers(user.id, 4);
+    const topics = getTrendingTags(posts, 5);
+    const query = state.ui.query.trim();
+    const searchUsers = query ? getMatchingUsers(query, user.id).slice(0, 4) : [];
+
+    return `
+        ${
+            query
+                ? renderRailSection({
+                      kicker: "Busca social",
+                      title: `Perfis para "${query}"`,
+                      text: "Use a busca para navegar entre pessoas e temas sem sair do contexto do feed.",
+                      content: searchUsers.length
+                          ? `<div class="rail-user-list">${searchUsers.map((profileUser) => renderMiniUserRow(profileUser, user.id)).join("")}</div>`
+                          : `<div class="search-suggestion-empty">Nenhum perfil encontrado com esse termo.</div>`
+                  })
+                : ""
+        }
+        ${renderRailSection({
+            kicker: options.metricsKicker || "Pulso",
+            title: options.metricsTitle || "Termometro da rede",
+            text: options.metricsText || "Leitura rapida do que esta puxando a atividade agora.",
+            content: renderRailMetricGrid(options.metrics || [
+                { value: formatCompact.format(posts.length), label: "posts no radar" },
+                { value: formatCompact.format(getFollowersCount(user.id)), label: "seguidores" },
+                { value: formatCompact.format(getUnreadActivitiesCount(user.id)), label: "alertas novos" },
+                { value: formatCompact.format(getUnreadDirectThreadsCount(user.id)), label: "directs pendentes" }
+            ])
+        })}
+        ${renderRailSection({
+            kicker: "Assuntos",
+            title: options.topicsTitle || "Temas em movimento",
+            text: "Toque em uma hashtag para abrir uma conversa ou refinar a busca.",
+            content: topics.length
+                ? renderTopicButtonStrip(topics)
+                : `<div class="search-suggestion-empty">Os assuntos entram aqui conforme a rede ganha tags.</div>`
+        })}
+        ${renderRailSection({
+            kicker: "Sugestoes",
+            title: options.peopleTitle || "Perfis para acompanhar",
+            text: "Gente ativa para deixar seu feed, alertas e direct com mais movimento.",
+            content: discoverUsers.length
+                ? `<div class="rail-user-list">${discoverUsers.map((profileUser) => renderMiniUserRow(profileUser, user.id)).join("")}</div>`
+                : `<div class="search-suggestion-empty">Assim que houver mais gente ativa, as sugestoes aparecem aqui.</div>`
+        })}
+    `;
+}
+
+function renderHomeRail(user, rankedPosts, metrics) {
+    const leadPost = rankedPosts[0] || null;
+
+    return `
+        ${
+            leadPost
+                ? renderRailSection({
+                      kicker: "Em destaque",
+                      title: truncateText(leadPost.title, 52),
+                      text: `@${leadPost.author.handle} · ${timeAgo(leadPost.createdAt)}`,
+                      content: `
+                          <button class="rail-feature-card" type="button" data-action="open-post" data-post-id="${escapeHtml(leadPost.id)}">
+                              <span class="rail-feature-media">
+                                  ${renderPostMediaVisual(leadPost, {
+                                      frameClass: "rail-feature-media-stack",
+                                      imageClass: "rail-feature-image"
+                                  })}
+                              </span>
+                              <span class="rail-feature-copy">
+                                  <strong>${escapeHtml(truncateText(leadPost.caption || leadPost.title, 132))}</strong>
+                                  <span>${escapeHtml(formatMetricLabel(leadPost.commentsCount, "comentario", "comentarios"))}</span>
+                              </span>
+                          </button>
+                      `
+                  })
+                : ""
+        }
+        ${renderDiscoveryRail(user, rankedPosts, {
+            metrics: [
+                { value: formatCompact.format(metrics.trending), label: "em alta" },
+                { value: formatCompact.format(metrics.recent), label: "recentes" },
+                { value: formatCompact.format(metrics.discover), label: "descobertas" },
+                { value: formatCompact.format(getFollowingCount(user.id)), label: "seguindo" }
+            ],
+            metricsTitle: "Ritmo da home",
+            metricsText: "A home agora funciona como um feed social curado, nao como uma vitrine solta."
+        })}
+    `;
+}
+
+function renderProfileSummaryRail(profileUser, currentUser, posts, highlightPost) {
+    const isOwnProfile = profileUser.id === currentUser.id;
+
+    return renderRailSection({
+        kicker: isOwnProfile ? "Seu painel" : "Resumo",
+        title: isOwnProfile ? "Panorama do perfil" : `@${profileUser.handle}`,
+        text: highlightPost
+            ? `Destaque atual: ${truncateText(highlightPost.title, 44)}`
+            : "Esse perfil ainda esta montando o proprio ritmo.",
+        content: `
+            ${renderRailMetricGrid([
+                { value: formatCompact.format(getUserPosts(profileUser.id).length), label: "posts" },
+                { value: formatCompact.format(getFollowersCount(profileUser.id)), label: "seguidores" },
+                { value: formatCompact.format(getFollowingCount(profileUser.id)), label: "seguindo" },
+                { value: formatCompact.format(getUserCommentsCount(profileUser.id)), label: "comentarios" }
+            ])}
+            ${
+                posts.length
+                    ? `<div class="rail-post-list">${posts.slice(0, 3).map((post) => renderMiniPostRow(post)).join("")}</div>`
+                    : `<div class="search-suggestion-empty">Quando esse perfil publicar, os posts recentes aparecem aqui.</div>`
+            }
+        `
+    });
+}
+
+function formatChatDay(timestamp) {
+    const current = new Date();
+    const target = new Date(timestamp);
+    const currentStart = new Date(current.getFullYear(), current.getMonth(), current.getDate()).getTime();
+    const targetStart = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+    const diffDays = Math.round((currentStart - targetStart) / 86400000);
+
+    if (diffDays === 0) {
+        return "Hoje";
+    }
+
+    if (diffDays === 1) {
+        return "Ontem";
+    }
+
+    return new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "long"
+    }).format(target);
+}
+
+function formatChatTime(timestamp) {
+    return new Intl.DateTimeFormat("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit"
+    }).format(new Date(timestamp));
+}
+
+function renderDirectThreadMessages(messages, viewerId) {
+    let lastDay = "";
+
+    return (messages || [])
+        .map((message) => {
+            const nextDay = formatChatDay(message.createdAt);
+            const divider =
+                nextDay !== lastDay
+                    ? `
+                        <div class="messages-day-divider">
+                            <span>${escapeHtml(nextDay)}</span>
+                        </div>
+                    `
+                    : "";
+            lastDay = nextDay;
+
+            return `${divider}${renderDirectMessageBubble(message, viewerId, getUserById(message.senderId))}`;
+        })
+        .join("");
+}
+
 function renderHomeView(user) {
     const query = state.ui.query.trim();
     const homeMode = state.ui.viewTabs.homeMode === "photos" ? "photos" : "social";
@@ -2536,104 +3091,98 @@ function renderHomeView(user) {
         "home",
         `home:${user.id}:${state.ui.viewTabs.home}:${homeMode}:${state.ui.category}:${query.toLowerCase()}`
     );
-    const spotlightPosts = query ? [] : rankedPosts.slice(0, 4);
-    const timelinePosts = rankedPosts.slice(query ? 0 : 4, query ? 4 : 7);
-    const highlightedPostIds = new Set([...spotlightPosts, ...timelinePosts].map((post) => post.id));
-    const homeGridPosts = rankedPosts.filter((post) => !highlightedPostIds.has(post.id));
-
-    return `
-        <div class="view-stack view-stack--home">
-            ${
-                query
-                    ? `
-                        ${renderHero({
-                            kicker: "Busca",
-                            title: `Resultados para "${query}"`,
-                            text: "Uma leitura limpa da busca, sem desviar o foco da arte e das postagens.",
-                            stats: [
-                                { value: formatCompact.format(rankedPosts.length), label: "posts encontrados" },
-                                { value: formatCompact.format(recentPosts.length), label: "recentes" },
-                                { value: formatCompact.format(getFollowingCount(user.id)), label: "seguindo" }
-                            ]
-                        })}
-                        ${renderHomeModeSwitch(homeMode)}
-                    `
-                    : homeMode === "photos"
-                      ? renderHomePhotoIntro(homeMode, rankedPosts)
-                      : `
-                          ${renderHomeSpotlight(user, rankedPosts)}
-                          ${renderHomeModeSwitch(homeMode)}
-                      `
-            }
-            ${
-                homeMode === "photos"
-                    ? ""
-                    : renderViewTabsStrip({
-                          group: "home",
-                          kicker: query ? "Busca viva" : "Ritmo da rede",
-                          title: query ? "Organize os resultados sem perder contexto." : "Troque o ritmo da home sem baguncar a leitura.",
-                          text: query
-                              ? "As abas agora mudam a ordem real dos resultados, nao so a aparencia."
-                              : "Em alta, recentes e descobertas agora funcionam de verdade e mantem a pagina clara.",
-                          tabs: [
-                              { value: "trending", label: "Em alta", count: trendingPosts.length },
-                              { value: "recent", label: "Recentes", count: recentPosts.length },
-                              { value: "discover", label: "Descobertas", count: discoveryPosts.length }
-                          ]
-                      })
-            }
-            ${
-                homeMode === "photos"
-                    ? ""
-                    : `
-                        <section class="filter-strip">
-                            ${CATEGORIES.map((category) => renderFilterButton(category)).join("")}
-                        </section>
-                    `
-            }
-            ${
-                rankedPosts.length
-                    ? `
-                        ${
-                            homeMode === "photos"
-                                ? renderPhotoGallerySection(rankedPosts)
-                                : `
-                                    ${timelinePosts.length ? renderHomeTimelineSection(timelinePosts) : ""}
-                                    ${
-                                        homeGridPosts.length
-                                            ? `
-                                                <section class="art-grid art-grid--home-flow">
-                                                    ${homeGridPosts
-                                                        .map((post, index) =>
-                                                            renderArtCard(post, {
-                                                                home: true,
-                                                                featured: index < 2,
-                                                                main: index === 0
-                                                            })
-                                                        )
-                                                        .join("")}
-                                                </section>
-                                            `
-                                            : ""
-                                    }
-                                `
-                        }
-                    `
+    const hero = renderHero({
+        kicker: query ? "Busca" : homeMode === "photos" ? "Modo foto" : "Inicio",
+        title: query ? `Resultados para "${query}"` : homeMode === "photos" ? "Mosaico vivo da rede" : "Sua home social",
+        text: query
+            ? "A busca agora puxa pessoas, posts e temas sem quebrar a fluidez do app."
+            : homeMode === "photos"
+              ? "Uma leitura visual mais direta, para quando voce quiser navegar pela arte sem tanto texto."
+              : "Um feed principal com ritmo de app social: composer no topo, leitura limpa e cards mais consistentes.",
+        stats: [
+            { value: formatCompact.format(rankedPosts.length), label: query ? "resultados" : "posts no radar" },
+            { value: formatCompact.format(getUnreadActivitiesCount(user.id)), label: "alertas novos" },
+            { value: formatCompact.format(getUnreadDirectThreadsCount(user.id)), label: "directs" }
+        ]
+    });
+    const main =
+        homeMode === "photos"
+            ? `
+                ${renderFeedComposerLauncher(user, {
+                    prompt: "Compartilhe uma imagem com a rede",
+                    note: "Quando quiser publicar algo novo, o composer abre em um toque."
+                })}
+                ${renderHomeModeSwitch(homeMode)}
+                ${rankedPosts.length
+                    ? renderPhotoGallerySection(rankedPosts)
                     : renderEmptyState({
-                          kicker: query ? "Busca" : "Inicio",
-                          title: query ? "Nenhum post bateu com essa busca." : "Seu inicio ainda nao tem posts.",
-                          subtitle: query
-                              ? "Tente buscar por outro nome, tag ou categoria."
-                              : "Assim que a rede ganhar movimento, os novos posts aparecem aqui.",
+                          kicker: query ? "Busca" : "Fotos",
+                          title: query ? "Nenhuma imagem bateu com essa busca." : "Ainda nao ha imagens por aqui.",
+                          subtitle: "Quando houver posts visuais nesse recorte, eles aparecem aqui.",
                           text: query
-                              ? "Se nao encontrou agora, experimente mudar o termo ou limpar o filtro para ver mais gente e mais posts."
-                              : "Publique algo ou siga algumas contas para montar o seu inicio.",
+                              ? "Tente outro termo para encontrar pessoas, posts ou hashtags visuais."
+                              : "Use o composer para publicar a primeira imagem e abrir esse fluxo.",
                           action: "open-composer",
-                          actionLabel: query ? "Publicar um post" : "Fazer o primeiro post"
-                      })
-            }
-        </div>
-    `;
+                          actionLabel: "Publicar imagem"
+                      })}
+            `
+            : `
+                ${renderFeedComposerLauncher(user)}
+                ${renderHomeModeSwitch(homeMode)}
+                ${renderViewTabsStrip({
+                    group: "home",
+                    kicker: query ? "Busca viva" : "Ritmo da home",
+                    title: query ? "Refine os resultados sem perder o contexto." : "Escolha como a home organiza seu feed principal.",
+                    text: query
+                        ? "As abas continuam funcionando dentro da busca para mudar o peso dos resultados."
+                        : "Em alta, recentes e descobertas agora operam como modos reais do feed.",
+                    tabs: [
+                        { value: "trending", label: "Em alta", count: trendingPosts.length },
+                        { value: "recent", label: "Recentes", count: recentPosts.length },
+                        { value: "discover", label: "Descobertas", count: discoveryPosts.length }
+                    ]
+                })}
+                <section class="filter-strip">
+                    ${CATEGORIES.map((category) => renderFilterButton(category)).join("")}
+                </section>
+                ${
+                    rankedPosts.length
+                        ? `
+                            <section class="feed-list feed-list--social feed-list--home">
+                                ${rankedPosts
+                                    .map((post, index) =>
+                                        renderFeedCard(post, {
+                                            highlight: !query && state.ui.viewTabs.home === "trending" && index === 0
+                                        })
+                                    )
+                                    .join("")}
+                            </section>
+                        `
+                        : renderEmptyState({
+                              kicker: query ? "Busca" : "Inicio",
+                              title: query ? "Nenhum post bateu com essa busca." : "Seu inicio ainda nao ganhou movimento.",
+                              subtitle: query
+                                  ? "Tente outro nome, tag ou categoria para puxar novos resultados."
+                                  : "Publique algo ou siga mais contas para puxar o feed principal.",
+                              text: query
+                                  ? "A busca tambem olha autor, legenda, titulo, categoria e hashtags."
+                                  : "Assim que o app ganhar atividade, a home vira um fluxo social continuo.",
+                              action: "open-composer",
+                              actionLabel: query ? "Publicar algo" : "Fazer o primeiro post"
+                          })
+                }
+            `;
+
+    return renderSocialScreen({
+        hero,
+        main,
+        rail: renderHomeRail(user, rankedPosts, {
+            trending: trendingPosts.length,
+            recent: recentPosts.length,
+            discover: discoveryPosts.length
+        }),
+        className: `social-screen--home ${homeMode === "photos" ? "social-screen--photos" : ""}`
+    });
 }
 
 function renderHomeModeSwitch(homeMode) {
@@ -2761,14 +3310,31 @@ function renderFollowingView(user) {
         : followingTab === "following"
           ? `${formatCompact.format(followingPosts.length)} posts das ${formatCompact.format(followingCount)} contas que voce segue.`
           : `${formatCompact.format(allPosts.length)} posts na timeline completa do app.`;
-
-    return `
-        <div class="view-stack">
+    return renderSocialScreen({
+        hero: renderHero({
+            kicker: "Feed",
+            title: query ? `Timeline para "${query}"` : followingTab === "following" ? "Feed de quem voce segue" : "Timeline principal",
+            text: query
+                ? "A busca corre por toda a timeline e mantem o app navegavel."
+                : followingTab === "following"
+                  ? "Uma leitura mais intima, focada nas pessoas que ja fazem parte da sua rede."
+                  : "O feed completo mistura descoberta, relevancia e recencia com linguagem de rede social real.",
+            stats: [
+                { value: formatCompact.format(posts.length), label: "posts visiveis" },
+                { value: formatCompact.format(followingCount), label: "criadores seguidos" },
+                { value: formatCompact.format(getSavedPosts(user.id).length), label: "salvos" }
+            ]
+        }),
+        main: `
+            ${renderFeedComposerLauncher(user, {
+                prompt: "Publique algo para aparecer no feed",
+                note: "Um card de entrada rapido para voce nao depender de modal o tempo todo."
+            })}
             <section class="tag-strip tag-strip--modes tag-strip--feed-compact tag-strip--feed-minimal">
                 <div class="strip-copy strip-copy--feed strip-copy--feed-minimal">
-                    <span class="section-kicker">Feed</span>
+                    <span class="section-kicker">Timeline</span>
                     <p>
-                        <strong class="strip-title">${escapeHtml(query ? `Resultados para "${query}"` : "Timeline")}</strong>
+                        <strong class="strip-title">${escapeHtml(query ? `Resultados para "${query}"` : "Leitura do feed")}</strong>
                         <span>${escapeHtml(compactNote)}</span>
                     </p>
                 </div>
@@ -2796,7 +3362,7 @@ function renderFollowingView(user) {
             ${
                 posts.length
                     ? `
-                        <section class="feed-list feed-list--social">
+                        <section class="feed-list feed-list--social feed-list--timeline">
                             ${posts
                                 .map((post, index) =>
                                     renderFeedCard(post, {
@@ -2820,21 +3386,35 @@ function renderFollowingView(user) {
                                     ? "Nenhum post bateu com essa busca."
                                     : "Nada apareceu no feed agora.",
                           subtitle: query
-                              ? "Tente outro termo ou limpe a busca para ver o feed completo."
+                              ? "Tente outro termo ou limpe a busca para ver a timeline completa."
                               : followingTab === "following"
-                                ? "Troque para a aba Tudo para ver a timeline completa."
+                                ? "Troque para Tudo para abrir a timeline completa."
                                 : "Tente novamente em instantes.",
                           text: query
-                              ? "A busca continua funcionando em toda a timeline, sem esconder o resto do app."
+                              ? "A busca continua viva em toda a timeline, sem recarregar a pagina."
                               : followingTab === "following"
-                                ? "Seguindo fica como filtro rapido, enquanto Tudo mostra a timeline completa."
+                                ? "Seguindo vira um filtro direto, enquanto Tudo abre a camada mais ampla do app."
                                 : "Quando novos posts entrarem, eles aparecem aqui pela ordem do algoritmo.",
                           action: followingTab === "following" ? "open-composer" : "",
                           actionLabel: followingTab === "following" ? "Postar" : null
                       })
             }
-        </div>
-    `;
+        `,
+        rail: renderDiscoveryRail(user, posts, {
+            metricsKicker: "Feed",
+            metricsTitle: "Resumo da timeline",
+            metricsText: "Um painel lateral para acompanhar ritmo, alertas e descoberta sem poluir o centro.",
+            metrics: [
+                { value: formatCompact.format(posts.length), label: "posts agora" },
+                { value: formatCompact.format(getUnreadActivitiesCount(user.id)), label: "alertas" },
+                { value: formatCompact.format(getUnreadDirectThreadsCount(user.id)), label: "directs" },
+                { value: formatCompact.format(getFollowingCount(user.id)), label: "seguindo" }
+            ],
+            topicsTitle: "Conversas que atravessam o feed",
+            peopleTitle: followingTab === "following" ? "Mais perfis para seguir" : "Descobertas para sua timeline"
+        }),
+        className: "social-screen--timeline"
+    });
 }
 
 function renderDiscussionView(user) {
@@ -2997,18 +3577,18 @@ function renderSavedView(user) {
               ? "Boa para revisar referencias vivas, com comentarios e interacoes acontecendo em volta."
               : "Uma selecao pessoal de imagens, referencias e posts que valem outra olhada.";
 
-    return `
-        <div class="view-stack">
-            ${renderHero({
-                kicker: "Salvos",
-                title: savedTitle,
-                text: savedText,
-                stats: [
-                    { value: formatCompact.format(posts.length), label: "posts salvos" },
-                    { value: formatCompact.format(getUserPosts(user.id).length), label: "posts seus" },
-                    { value: formatCompact.format(getUserCommentsCount(user.id)), label: "comentarios" }
-                ]
-            })}
+    return renderSocialScreen({
+        hero: renderHero({
+            kicker: "Salvos",
+            title: savedTitle,
+            text: savedText,
+            stats: [
+                { value: formatCompact.format(posts.length), label: "posts salvos" },
+                { value: formatCompact.format(getUserPosts(user.id).length), label: "posts seus" },
+                { value: formatCompact.format(getUserCommentsCount(user.id)), label: "comentarios" }
+            ]
+        }),
+        main: `
             ${renderViewTabsStrip({
                 group: "saved",
                 kicker: "Colecao organizada",
@@ -3034,8 +3614,21 @@ function renderSavedView(user) {
                           })
                 }
             </section>
-        </div>
-    `;
+        `,
+        rail: renderDiscoveryRail(user, posts, {
+            metricsKicker: "Colecao",
+            metricsTitle: "Panorama dos salvos",
+            metricsText: "Referencias, posts fortes e criadores para seguir sem sair da sua colecao.",
+            metrics: [
+                { value: formatCompact.format(recentPosts.length), label: "recentes" },
+                { value: formatCompact.format(likedPosts.length), label: "mais curtidos" },
+                { value: formatCompact.format(discussedPosts.length), label: "mais comentados" },
+                { value: formatCompact.format(getSavedPosts(user.id).length), label: "na colecao" }
+            ],
+            topicsTitle: "Hashtags guardadas"
+        }),
+        className: "social-screen--saved"
+    });
 }
 
 function renderActivityView(user) {
@@ -3052,18 +3645,18 @@ function renderActivityView(user) {
             ? "Tudo o que voce ja viu continua disponivel para voltar depois, sem apagar a base."
             : "Curtidas, comentarios, seguidores e directs novos aparecem nessa trilha enquanto ainda estao frescos.";
 
-    return `
-        <div class="view-stack">
-            ${renderHero({
-                kicker: "Atividade",
-                title: activityTitle,
-                text: activityText,
-                stats: [
-                    { value: formatCompact.format(activities.length), label: "itens recentes" },
-                    { value: formatCompact.format(unreadActivities.length), label: "nao lidas" },
-                    { value: formatCompact.format(readActivities.length), label: "historico" }
-                ]
-            })}
+    return renderSocialScreen({
+        hero: renderHero({
+            kicker: "Atividade",
+            title: activityTitle,
+            text: activityText,
+            stats: [
+                { value: formatCompact.format(activities.length), label: "itens recentes" },
+                { value: formatCompact.format(unreadActivities.length), label: "nao lidas" },
+                { value: formatCompact.format(readActivities.length), label: "historico" }
+            ]
+        }),
+        main: `
             ${renderViewTabsStrip({
                 group: "activity",
                 kicker: "Central organizada",
@@ -3101,8 +3694,21 @@ function renderActivityView(user) {
                           actionLabel: "Publicar"
                       })
             }
-        </div>
-    `;
+        `,
+        rail: renderDiscoveryRail(user, activities.map((entry) => (entry.postId ? getPostById(entry.postId) : null)).filter(Boolean), {
+            metricsKicker: "Alertas",
+            metricsTitle: "Resumo da atividade",
+            metricsText: "Sua central de notificacoes fica no centro; o contexto e a descoberta ficam do lado.",
+            metrics: [
+                { value: formatCompact.format(unreadActivities.length), label: "novas" },
+                { value: formatCompact.format(readActivities.length), label: "historico" },
+                { value: formatCompact.format(getUnreadDirectThreadsCount(user.id)), label: "directs" },
+                { value: formatCompact.format(getFollowersCount(user.id)), label: "seguidores" }
+            ],
+            topicsTitle: "Temas ligados aos seus alertas"
+        }),
+        className: "social-screen--activity"
+    });
 }
 
 function renderMessagesView(user) {
@@ -3111,13 +3717,13 @@ function renderMessagesView(user) {
     const otherUser = activeThread ? getThreadOtherUser(activeThread, user.id) : null;
 
     return `
-        <div class="view-stack">
+        <div class="view-stack view-stack--messages">
             ${renderHero({
-                kicker: "Direct",
-                title: activeThread ? `Conversa com ${otherUser ? otherUser.name : "alguem"}` : "Suas conversas privadas",
+                kicker: "Mensagens",
+                title: activeThread ? `Conversa com ${otherUser ? otherUser.name : "alguem"}` : "Seu direct",
                 text: activeThread
-                    ? "Responda rapido, veja horario e abra o perfil da pessoa sem sair do clima leve do app."
-                    : "Quando voce abrir uma conversa pelo perfil de alguem, ela aparece aqui mesmo se a pessoa estiver offline.",
+                    ? "Uma interface mais limpa, com bolhas melhores, leitura de horario e composicao mais proxima de app nativo."
+                    : "Assim que voce abrir uma conversa por um perfil, ela aparece aqui com contexto e continuidade.",
                 stats: [
                     { value: formatCompact.format(threads.length), label: "conversas" },
                     { value: formatCompact.format(getUnreadDirectThreadsCount(user.id)), label: "nao lidas" },
@@ -3126,11 +3732,12 @@ function renderMessagesView(user) {
             })}
             <section class="messages-shell">
                 <aside class="messages-list">
-                    <div class="section-head">
+                    <div class="messages-list-head">
                         <div>
-                            <span class="section-kicker">Lista</span>
+                            <span class="section-kicker">Inbox</span>
                             <h2>Conversas</h2>
                         </div>
+                        <span class="meta-pill">${escapeHtml(formatMetricLabel(threads.length, "thread", "threads"))}</span>
                     </div>
                     ${
                         threads.length
@@ -3146,10 +3753,10 @@ function renderMessagesView(user) {
                                               <div class="message-thread-copy">
                                                   <strong>${escapeHtml(peer ? peer.name : "Conversa")}</strong>
                                                   <span>@${escapeHtml(peer ? peer.handle : "usuario")}</span>
-                                                  <p>${escapeHtml(lastMessage ? truncateText(lastMessage.text, 58) : "Conversa pronta para começar.")}</p>
+                                                  <p>${escapeHtml(lastMessage ? truncateText(lastMessage.text, 64) : "Conversa pronta para comecar.")}</p>
                                               </div>
                                               <div class="message-thread-meta">
-                                                  <span>${escapeHtml(lastMessage ? timeAgo(lastMessage.createdAt) : "agora")}</span>
+                                                  <span>${escapeHtml(lastMessage ? formatChatTime(lastMessage.createdAt) : "agora")}</span>
                                                   ${unread ? `<strong>${escapeHtml(String(unread))}</strong>` : ""}
                                               </div>
                                           </button>
@@ -3159,7 +3766,7 @@ function renderMessagesView(user) {
                             : `
                                 <div class="top-alert-empty">
                                     <strong>Sem directs por enquanto.</strong>
-                                    <span>Use o botao de mensagem no perfil de alguem para abrir a primeira conversa, mesmo se a pessoa estiver offline.</span>
+                                    <span>Use o botao de mensagem no perfil de alguem para abrir a primeira conversa.</span>
                                 </div>
                             `
                     }
@@ -3169,13 +3776,16 @@ function renderMessagesView(user) {
                         activeThread && otherUser
                             ? `
                                 <div class="messages-panel-head">
-                                    <button class="profile-link profile-link--message" type="button" data-action="open-profile" data-user-id="${escapeHtml(otherUser.id)}">
-                                        ${renderAvatar(otherUser, "mini-avatar")}
-                                        <div class="profile-link-copy">
-                                            <strong>${escapeHtml(otherUser.name)}</strong>
-                                            <span>@${escapeHtml(otherUser.handle)}</span>
-                                        </div>
-                                    </button>
+                                    <div class="messages-panel-profile">
+                                        <button class="profile-link profile-link--message" type="button" data-action="open-profile" data-user-id="${escapeHtml(otherUser.id)}">
+                                            ${renderAvatar(otherUser, "mini-avatar")}
+                                            <div class="profile-link-copy">
+                                                <strong>${escapeHtml(otherUser.name)}</strong>
+                                                <span>@${escapeHtml(otherUser.handle)}</span>
+                                            </div>
+                                        </button>
+                                        <p class="messages-panel-note">Bolhas melhores, horario discreto e input fixo para deixar o direct mais confortavel.</p>
+                                    </div>
                                     <div class="messages-panel-actions">
                                         ${renderUserPrivacyPresencePills(otherUser, user.id)}
                                     </div>
@@ -3183,11 +3793,7 @@ function renderMessagesView(user) {
                                 <div class="messages-thread">
                                     ${
                                         activeThread.messages.length
-                                            ? activeThread.messages
-                                                  .map((message) =>
-                                                      renderDirectMessageBubble(message, user.id, getUserById(message.senderId))
-                                                  )
-                                                  .join("")
+                                            ? renderDirectThreadMessages(activeThread.messages, user.id)
                                             : `
                                                 <div class="top-alert-empty">
                                                     <strong>A conversa esta vazia.</strong>
@@ -3197,7 +3803,7 @@ function renderMessagesView(user) {
                                     }
                                 </div>
                                 <form class="direct-form" id="directForm" data-thread-id="${escapeHtml(activeThread.id)}" ${state.ui.sendingDirect ? 'aria-busy="true"' : ""}>
-                                    <input name="message" type="text" maxlength="1200" placeholder="${escapeAttribute(state.ui.sendingDirect ? "Enviando mensagem..." : "Escreva uma mensagem")}" ${state.ui.sendingDirect ? "disabled" : ""} required>
+                                    <input name="message" type="text" maxlength="1200" placeholder="${escapeAttribute(state.ui.sendingDirect ? "Enviando mensagem..." : "Escreva uma mensagem com calma")}" ${state.ui.sendingDirect ? "disabled" : ""} required>
                                     <button class="icon-button send-button ${state.ui.sendingDirect ? "is-loading" : ""}" type="submit" aria-label="${escapeAttribute(state.ui.sendingDirect ? "Enviando mensagem" : "Enviar mensagem")}" ${state.ui.sendingDirect ? "disabled" : ""}>
                                         ${renderDirectSubmitButton(state.ui.sendingDirect)}
                                     </button>
@@ -3206,7 +3812,7 @@ function renderMessagesView(user) {
                             : `
                                 <div class="messages-empty-panel">
                                     <strong>Escolha uma conversa.</strong>
-                                    <span>Os directs aparecem aqui com horario, remetente e leitura simples.</span>
+                                    <span>Os directs aparecem aqui com bolhas, horario e composicao mais confortavel para celular e desktop.</span>
                                 </div>
                             `
                     }
@@ -3316,8 +3922,8 @@ function renderProfileView(profileUser, currentUser) {
     const isFollowed = getFollowingIds(viewerId).includes(profileUser.id);
     const profileStatusPills = renderUserPrivacyPresencePills(profileUser, viewerId, { includeHiddenHint: isOwnProfile });
 
-    return `
-        <div class="view-stack">
+    return renderSocialScreen({
+        main: `
             <section class="profile-hero" data-profile-theme="${escapeAttribute(profileTheme.id)}">
                 <div class="profile-cover">
                     <img src="${escapeAttribute(coverImage)}" alt="${escapeAttribute(profileUser.name)}"${getCoverImageStyleAttribute(profileUser)}>
@@ -3412,7 +4018,6 @@ function renderProfileView(profileUser, currentUser) {
                 </div>
             </section>
             ${canAccessContent ? renderProfileConnectionsSection(profileUser, viewerId) : ""}
-            ${renderProfilePresenceSection(profileUser, currentUser, isOwnProfile, profileTheme, highlightPost)}
             ${
                 !canAccessContent && !isOwnProfile
                     ? `
@@ -3527,8 +4132,28 @@ function renderProfileView(profileUser, currentUser) {
                     }
                 </div>
             </section>
-        </div>
-    `;
+        `,
+        rail: `
+            ${renderProfileSummaryRail(profileUser, currentUser, posts, highlightPost)}
+            ${renderProfilePresenceSection(profileUser, currentUser, isOwnProfile, profileTheme, highlightPost)}
+            ${renderDiscoveryRail(currentUser, posts, {
+                metricsKicker: isOwnProfile ? "Perfil" : "Radar",
+                metricsTitle: isOwnProfile ? "Seu ecossistema" : "Contexto social",
+                metricsText: isOwnProfile
+                    ? "Um resumo lateral da sua conta para deixar o perfil mais util e mais proximo de app real."
+                    : "Perfis relacionados e temas em volta dessa conta.",
+                metrics: [
+                    { value: formatCompact.format(postsCount), label: "posts" },
+                    { value: formatCompact.format(followersCount), label: "seguidores" },
+                    { value: formatCompact.format(followingCount), label: "seguindo" },
+                    { value: formatCompact.format(getUserCommentsCount(profileUser.id)), label: "comentarios" }
+                ],
+                topicsTitle: isOwnProfile ? "Temas do seu perfil" : "Temas desse perfil",
+                peopleTitle: isOwnProfile ? "Perfis para crescer sua rede" : "Perfis para continuar explorando"
+            })}
+        `,
+        className: "social-screen--profile"
+    });
 }
 
 function renderHero({ kicker, title, text, stats }) {
@@ -4419,7 +5044,7 @@ function renderFeedCard(post, options = {}) {
     const socialPulse = post.socialPulse || createSocialPulse(post);
     const socialActors = socialPulse.actors || [];
     const extraActorCount = Math.max(0, socialPulse.activityCount - socialActors.length);
-    const socialBody = (socialPulse.body || "").replaceAll("Â·", "-");
+    const socialBody = (socialPulse.body || "").replaceAll("·", "-");
     const commentPanelTitle = "Comentarios";
     const visualStyle = getPostVisualStyleAttribute(post);
     const commentPreview = renderFeedCommentPreview(post);
@@ -4439,10 +5064,11 @@ function renderFeedCard(post, options = {}) {
                     ${renderProfileIdentity(post.author, {
                         avatarClass: "mini-avatar",
                         copyClass: "profile-link-copy",
-                        meta: `@${post.author.handle}`,
+                        meta: `@${post.author.handle} · ${timeAgo(post.createdAt)}`,
                         className: "profile-link profile-link--feed"
                     })}
                     <div class="feed-head-badges">
+                        ${renderPostSignalBadge(post)}
                         <span class="meta-pill">${escapeHtml(post.category)}</span>
                     </div>
                 </div>
@@ -4461,6 +5087,9 @@ function renderFeedCard(post, options = {}) {
                             `
                             : `<span class="meta-pill">Seu post</span>`
                     }
+                    <button class="icon-action icon-action--ghost" type="button" data-action="open-post" data-post-id="${escapeHtml(post.id)}" aria-label="Abrir ${escapeAttribute(post.title)}">
+                        <span class="icon-action-symbol" aria-hidden="true">${renderIcon("open")}</span>
+                    </button>
                 </div>
             </div>
             <div class="feed-layout">
@@ -4489,6 +5118,13 @@ function renderFeedCard(post, options = {}) {
                             : ""
                     }
                 </div>
+            </div>
+            <div class="feed-social-row">
+                <div class="feed-social-copy">
+                    <strong>${escapeHtml(socialPulse.title || "Fluxo social")}</strong>
+                    <span>${escapeHtml(socialBody || `Publicado em ${post.category}`)}</span>
+                </div>
+                ${renderActorStack(socialActors, extraActorCount)}
             </div>
             <div class="feed-actions">
                 <div class="feed-actions-left feed-actions-left--minimal">
@@ -4548,7 +5184,7 @@ function renderFeedCard(post, options = {}) {
                             : ""
                     }
                 </div>
-                <span class="activity-meta">${escapeHtml(timeAgo(post.createdAt))}</span>
+                <span class="activity-meta">${escapeHtml(formatPostStamp(post.createdAt))}</span>
             </div>
             <div class="feed-comments-preview ${isInlineOpen ? "is-open" : commentPreview ? "is-peek" : ""}">
                 ${
@@ -4873,11 +5509,13 @@ function renderDirectMessageBubble(message, viewerId, author) {
 
     return `
         <article class="direct-message ${isOwn ? "is-own" : ""}">
-            ${!isOwn && author ? renderAvatar(author, "mini-avatar") : `<span class="mini-avatar mini-avatar--ghost"></span>`}
-            <div class="direct-message-body">
-                <strong>${escapeHtml(isOwn ? "Voce" : author?.name || "Pessoa")}</strong>
-                <p>${escapeHtml(message.text)}</p>
-                <span>${escapeHtml(timeAgo(message.createdAt))}</span>
+            ${!isOwn && author ? renderAvatar(author, "mini-avatar") : ""}
+            <div class="direct-message-cluster">
+                ${!isOwn ? `<strong class="direct-message-author">${escapeHtml(author?.name || "Pessoa")}</strong>` : ""}
+                <div class="direct-message-body">
+                    <p>${escapeHtml(message.text)}</p>
+                </div>
+                <span class="direct-message-meta">${escapeHtml(formatChatTime(message.createdAt))}</span>
             </div>
         </article>
     `;
@@ -5766,6 +6404,13 @@ function renderComposerModal() {
                         ${renderButtonContent("close", "Fechar")}
                     </button>
                     <form class="composer-form composer-form--discussion" id="composerForm">
+                        <section class="composer-sheet-head">
+                            ${renderStaticProfileIdentity(currentUser, `@${currentUser.handle}`)}
+                            <div class="composer-sheet-copy">
+                                <strong>Abrir uma discussao</strong>
+                                <span>Menos poluicao, mais clareza para voce puxar um assunto e publicar rapido.</span>
+                            </div>
+                        </section>
                         ${renderComposerModeSwitch(draft)}
                         <input name="postKind" type="hidden" value="discussion">
                         <input name="contentMode" type="hidden" value="text">
@@ -5811,6 +6456,13 @@ function renderComposerModal() {
                     ${renderButtonContent("close", "Fechar")}
                 </button>
                 <form class="composer-form" id="composerForm">
+                    <section class="composer-sheet-head">
+                        ${renderStaticProfileIdentity(currentUser, `@${currentUser.handle}`)}
+                        <div class="composer-sheet-copy">
+                            <strong>Crie um post sem friccao</strong>
+                            <span>Imagem, legenda e publicar. O resto fica guardado em opcoes avancadas.</span>
+                        </div>
+                    </section>
                     ${renderComposerModeSwitch(draft)}
                     ${renderComposerDistributionSwitch(draft)}
                     <section class="composer-preview-shell" id="composerPreviewPanel">
