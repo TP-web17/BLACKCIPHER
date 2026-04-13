@@ -158,6 +158,7 @@ const state = {
         alertsPreviewOpen: false,
         alertsPreviewTab: "unread",
         directThreadId: null,
+        mobileMessagesPanelOpen: false,
         orderSnapshots: {},
         searchFocus: false,
         bootstrappingSession: true,
@@ -847,6 +848,7 @@ function activateView(view) {
     state.ui.profileConnectionsView = "";
     state.ui.profileMenuOpen = false;
     state.ui.alertsPreviewOpen = false;
+    state.ui.mobileMessagesPanelOpen = false;
 
     if (state.ui.view === "profile") {
         state.ui.profileUserId = getCurrentUser()?.id || null;
@@ -877,7 +879,12 @@ function openMessagesFlow() {
     state.ui.directThreadId = state.ui.directThreadId || getDirectThreadsForUser(user.id)[0]?.id || null;
     state.ui.profileMenuOpen = false;
     state.ui.alertsPreviewOpen = false;
+    state.ui.mobileMessagesPanelOpen = false;
     renderFrame();
+}
+
+function isMobileMessagesLayout() {
+    return window.innerWidth <= 760;
 }
 
 function isMobilePullRefreshEnabled() {
@@ -1587,6 +1594,7 @@ function bindEvents() {
                 const threadId = await api.startDirectThread(targetUserId);
                 state.ui.view = "messages";
                 state.ui.directThreadId = threadId;
+                state.ui.mobileMessagesPanelOpen = isMobileMessagesLayout() && Boolean(threadId);
                 if (threadId) {
                     markThreadMessagesAsRead(threadId, requireCurrentUser().id);
                     await api.markDirectRead(threadId);
@@ -1600,10 +1608,17 @@ function bindEvents() {
             if (action === "open-thread") {
                 state.ui.view = "messages";
                 state.ui.directThreadId = actionButton.dataset.threadId || "";
+                state.ui.mobileMessagesPanelOpen = isMobileMessagesLayout() && Boolean(state.ui.directThreadId);
                 if (state.ui.directThreadId) {
                     markThreadMessagesAsRead(state.ui.directThreadId, requireCurrentUser().id);
                     await api.markDirectRead(state.ui.directThreadId);
                 }
+                renderFrame();
+                return;
+            }
+
+            if (action === "close-mobile-thread") {
+                state.ui.mobileMessagesPanelOpen = false;
                 renderFrame();
                 return;
             }
@@ -3104,7 +3119,8 @@ function renderTopUserPill(user) {
 
 function syncNavigation() {
     document.querySelectorAll(".nav-link, .mobile-link").forEach((button) => {
-        button.classList.toggle("is-active", button.dataset.view === state.ui.view);
+        const isMessagesShortcut = button.dataset.action === "open-messages" && state.ui.view === "messages";
+        button.classList.toggle("is-active", button.dataset.view === state.ui.view || isMessagesShortcut);
     });
 
     globalSearch.value = state.ui.query;
@@ -4253,6 +4269,8 @@ function renderMessagesView(user) {
     const threads = getDirectThreadsForUser(user.id);
     const activeThread = getActiveDirectThread(user.id);
     const otherUser = activeThread ? getThreadOtherUser(activeThread, user.id) : null;
+    const isMobileLayout = isMobileMessagesLayout();
+    const mobilePanelOpen = Boolean(isMobileLayout && activeThread && state.ui.mobileMessagesPanelOpen);
 
     return `
         <div class="view-stack view-stack--messages">
@@ -4268,7 +4286,7 @@ function renderMessagesView(user) {
                     { value: formatCompact.format(getFollowingCount(user.id)), label: "seguindo" }
                 ]
             })}
-            <section class="messages-shell">
+            <section class="messages-shell ${isMobileLayout ? "messages-shell--mobile" : ""} ${mobilePanelOpen ? "is-mobile-thread-open" : "is-mobile-list-open"}">
                 <aside class="messages-list">
                     <div class="messages-list-head">
                         <div>
@@ -4314,15 +4332,26 @@ function renderMessagesView(user) {
                         activeThread && otherUser
                             ? `
                                 <div class="messages-panel-head">
-                                    <div class="messages-panel-profile">
-                                        <button class="profile-link profile-link--message" type="button" data-action="open-profile" data-user-id="${escapeHtml(otherUser.id)}">
-                                            ${renderAvatar(otherUser, "mini-avatar")}
-                                            <div class="profile-link-copy">
-                                                <strong>${escapeHtml(otherUser.name)}</strong>
-                                                <span>@${escapeHtml(otherUser.handle)}</span>
-                                            </div>
-                                        </button>
-                                        <p class="messages-panel-note">Bolhas melhores, horario discreto e input fixo para deixar o direct mais confortavel.</p>
+                                    <div class="messages-panel-profile-wrap">
+                                        ${
+                                            isMobileLayout
+                                                ? `
+                                                    <button class="ghost-button icon-button messages-mobile-back" type="button" data-action="close-mobile-thread" aria-label="Voltar para conversas">
+                                                        <span class="button-symbol" aria-hidden="true">${renderIcon("chevron-left")}</span>
+                                                    </button>
+                                                `
+                                                : ""
+                                        }
+                                        <div class="messages-panel-profile">
+                                            <button class="profile-link profile-link--message" type="button" data-action="open-profile" data-user-id="${escapeHtml(otherUser.id)}">
+                                                ${renderAvatar(otherUser, "mini-avatar")}
+                                                <div class="profile-link-copy">
+                                                    <strong>${escapeHtml(otherUser.name)}</strong>
+                                                    <span>@${escapeHtml(otherUser.handle)}</span>
+                                                </div>
+                                            </button>
+                                            <p class="messages-panel-note">Bolhas melhores, horario discreto e input fixo para deixar o direct mais confortavel.</p>
+                                        </div>
                                     </div>
                                     <div class="messages-panel-actions">
                                         ${renderUserPrivacyPresencePills(otherUser, user.id)}
@@ -4876,6 +4905,11 @@ function renderIcon(name) {
         "chevron-down": `
             <svg viewBox="0 0 24 24">
                 <path d="m6.5 9.5 5.5 5 5.5-5"></path>
+            </svg>
+        `,
+        "chevron-left": `
+            <svg viewBox="0 0 24 24">
+                <path d="m14.5 6.5-5 5.5 5 5.5"></path>
             </svg>
         `,
         logout: `

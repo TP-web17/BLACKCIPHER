@@ -11322,9 +11322,27 @@ body[data-theme="light"] .pull-refresh-spinner {
     border-bottom: 1px solid var(--line-soft);
 }
 
+.messages-panel-profile-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+}
+
 .messages-panel-profile {
     display: grid;
     gap: 8px;
+    min-width: 0;
+}
+
+.messages-mobile-back {
+    display: none;
+    min-width: 42px;
+    width: 42px;
+    min-height: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 14px;
 }
 
 .messages-thread {
@@ -11742,6 +11760,69 @@ body[data-theme="light"] .composer-submit-bar {
 
     .social-rail-column {
         display: none;
+    }
+
+    .view-stack--messages {
+        gap: 14px;
+    }
+
+    .messages-shell--mobile {
+        grid-template-columns: 1fr !important;
+        gap: 14px;
+    }
+
+    .messages-shell--mobile.is-mobile-list-open .messages-panel {
+        display: none;
+    }
+
+    .messages-shell--mobile.is-mobile-thread-open .messages-list {
+        display: none;
+    }
+
+    .messages-shell--mobile .messages-list,
+    .messages-shell--mobile .messages-panel {
+        padding: 16px;
+    }
+
+    .messages-shell--mobile .messages-panel {
+        min-height: calc(100dvh - 250px);
+        grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    .messages-shell--mobile .messages-panel-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .messages-shell--mobile .messages-panel-profile-wrap {
+        width: 100%;
+    }
+
+    .messages-shell--mobile .messages-panel-profile,
+    .messages-shell--mobile .messages-panel-actions {
+        width: 100%;
+    }
+
+    .messages-shell--mobile .messages-panel-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .messages-shell--mobile .messages-thread {
+        min-height: 0;
+        max-height: none;
+        padding-right: 0;
+        padding-bottom: 4px;
+    }
+
+    .messages-shell--mobile .direct-message {
+        max-width: 88%;
+    }
+
+    .messages-mobile-back {
+        display: inline-flex;
+        flex: 0 0 auto;
     }
 
     .mobile-nav {
